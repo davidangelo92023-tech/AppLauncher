@@ -1048,7 +1048,7 @@ class LoginWindow(tk.Toplevel):
         tk.Button(row, text="Sign in", command=self._login, bg=ACC, fg="#ffffff",
                   activebackground=ACC, activeforeground="#ffffff", relief="flat", bd=0,
                   padx=18, pady=7, font=("Segoe UI", 10, "bold"), cursor="hand2").pack(side="left", padx=6)
-        tk.Button(row, text="Create account", command=self._register, bg=CARD2, fg=TEXT,
+        tk.Button(row, text="Create account", command=self._create_account, bg=CARD2, fg=TEXT,
                   activebackground="#343c58", activeforeground="#ffffff", relief="flat", bd=0,
                   padx=14, pady=7, font=("Segoe UI", 10), cursor="hand2").pack(side="left", padx=6)
         self.pass_var.trace_add("write", lambda *_: self.hint.config(text=""))
@@ -1073,7 +1073,7 @@ class LoginWindow(tk.Toplevel):
     def _login(self):
         self._do(lambda n: n.login(self.user_var.get().strip(), self.pass_var.get()))
 
-    def _register(self):
+    def _create_account(self):
         self._do(lambda n: n.register(self.user_var.get().strip(), self.pass_var.get()))
 
 
