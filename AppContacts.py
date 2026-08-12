@@ -267,6 +267,17 @@ class ContactsWindow(tk.Toplevel):
         else:
             LoginWindow(self, on_ready=self._after_login)
 
+    def refresh_net(self):
+        if self.net_active:
+            try:
+                friends = self.net.friends()
+                self.contacts = [{"name": f["username"], "id": f["id"], "banned": f.get("banned")}
+                                 for f in friends]
+                save_contacts(self.contacts)
+            except AppNet.NetError as e:
+                messagebox.showwarning("Offline", e.message, parent=self)
+        self.refresh_list()
+
     def _after_login(self):
         self._load_session()
         self.refresh_list()
@@ -298,6 +309,10 @@ class ContactsWindow(tk.Toplevel):
                                   activebackground=ACC, activeforeground="#ffffff", relief="flat", bd=0,
                                   padx=10, pady=5, font=("Segoe UI", 9, "bold"), cursor="hand2")
         self.sign_btn.pack(side="right", padx=(0, 6))
+        self.refresh_btn = tk.Button(bar, text="\u21bb Refresh", command=self.refresh_net, bg=CARD2, fg=TEXT,
+                                     activebackground="#343c58", activeforeground="#ffffff", relief="flat", bd=0,
+                                     padx=10, pady=5, font=("Segoe UI", 9, "bold"), cursor="hand2")
+        self.refresh_btn.pack(side="right", padx=(0, 6))
         self.add_btn = tk.Button(bar, text="+ Add", command=self.add_contact, bg=ACC, fg="#ffffff",
                                  activebackground=ACC, activeforeground="#ffffff", relief="flat", bd=0,
                                  padx=12, pady=5, font=("Segoe UI", 9, "bold"), cursor="hand2")
