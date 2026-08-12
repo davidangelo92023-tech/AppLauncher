@@ -32,6 +32,7 @@ import AppGames
 from AppGames import (GamesWindow, ChessWindow, TicTacToeWindow, Connect4Window,
                       SnakeWindow, Tile2048Window, WordleWindow, MemoryWindow)
 import AppContacts
+import AppNet
 
 APPS_DIR = r"C:\Users\taxvi\OneDrive\Desktop\apps"
 
@@ -3091,6 +3092,29 @@ class AssistantWindow(tk.Toplevel):
             return f"I couldn't reach the AI service: {e}"
 
 
+def _require_signin(root):
+    done = {}
+
+    def on_ready():
+        done["ok"] = True
+
+    login = AppContacts.LoginWindow(root, on_ready=on_ready)
+    login.title("Sign in to use App Launcher")
+
+    def on_close():
+        done["ok"] = False
+        try:
+            login.destroy()
+        except Exception:
+            pass
+
+    login.protocol("WM_DELETE_WINDOW", on_close)
+    while "ok" not in done:
+        root.update()
+        time.sleep(0.03)
+    return done["ok"] is True
+
+
 def main():
     try:
         ctypes.windll.shcore.SetProcessDpiAwareness(1)
@@ -3101,6 +3125,14 @@ def main():
             pass
 
     try:
+        if not AppNet.load_session():
+            gate = tk.Tk()
+            gate.withdraw()
+            gate.title("App Launcher")
+            ok = _require_signin(gate)
+            gate.destroy()
+            if not ok:
+                return
         app = AppLauncher()
         app.mainloop()
     except Exception as e:
