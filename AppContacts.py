@@ -1022,6 +1022,9 @@ class ChatWindow(tk.Toplevel):
         self.txt.see("end")
 
 
+DEFAULT_SERVER_URL = "https://applauncher-rt0v.onrender.com"
+
+
 class LoginWindow(tk.Toplevel):
     def __init__(self, app=None, on_ready=None):
         super().__init__(app)
@@ -1041,7 +1044,7 @@ class LoginWindow(tk.Toplevel):
         form.pack(padx=22, pady=(0, 8))
 
         tk.Label(form, text="Server URL", font=("Segoe UI", 9), bg=BG, fg=MUTED, anchor="w").pack(fill="x")
-        self.url_var = tk.StringVar(value=(AppNet.load_session() or {}).get("url", "https://"))
+        self.url_var = tk.StringVar(value=(AppNet.load_session() or {}).get("url", DEFAULT_SERVER_URL))
         tk.Entry(form, textvariable=self.url_var, bg=CARD2, fg=TEXT, insertbackground=TEXT,
                  relief="flat", bd=0, highlightthickness=0, font=("Segoe UI", 10), width=40).pack(fill="x", ipady=4, pady=(2, 10))
 
