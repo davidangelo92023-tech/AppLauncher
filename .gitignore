@@ -1,3 +1,8 @@
 __pycache__/
 config.json
 stats.json
+contacts.json
+chats.json
+banned.json
+server/applauncher.db
+

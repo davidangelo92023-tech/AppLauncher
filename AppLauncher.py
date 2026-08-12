@@ -31,6 +31,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageTk
 import AppGames
 from AppGames import (GamesWindow, ChessWindow, TicTacToeWindow, Connect4Window,
                       SnakeWindow, Tile2048Window, WordleWindow, MemoryWindow)
+import AppContacts
 
 APPS_DIR = r"C:\Users\taxvi\OneDrive\Desktop\apps"
 
@@ -98,6 +99,10 @@ DEFAULT_CONFIG = {
     "ai_api_key": "",
     "ai_api_url": "https://api.openai.com/v1/chat/completions",
     "ai_model": "gpt-4o-mini",
+    "username": "",
+    "avatar": "",
+    "owner_secret": "",
+    "owner_machine": "",
 }
 
 # ------- fixed palette (works with any accent) -------
@@ -535,7 +540,7 @@ class AppLauncher(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("App Launcher")
-        self.geometry("940x680")
+        self.geometry("1020x680")
         self.minsize(670, 420)
 
         self.font_title = tkfont.Font(family="Segoe UI", size=20, weight="bold")
@@ -597,6 +602,7 @@ class AppLauncher(tk.Tk):
 
         self._build_widgets()
         self._apply_color_widgets()
+        self.refresh_profile_btn()
         self.refresh()
         self._start_auto()
         self._start_effects()
@@ -820,6 +826,23 @@ class AppLauncher(tk.Tk):
         self.surprise_btn.bind("<Enter>", lambda e: self._set_btn_hover("surprise", True))
         self.surprise_btn.bind("<Leave>", lambda e: self._set_btn_hover("surprise", False))
 
+        self.contacts_btn = tk.Button(
+            self.cv, text="\U0001f465", command=self.open_contacts, font=btn_font,
+            bg=BUTTON_FILL_HEX, fg=self._accent(), activebackground=BUTTON_HOVER_HEX,
+            activeforeground="#ffffff", relief="flat", bd=0, width=3, pady=2, cursor="hand2",
+        )
+        self.contacts_btn.bind("<Enter>", lambda e: self._set_btn_hover("contacts", True))
+        self.contacts_btn.bind("<Leave>", lambda e: self._set_btn_hover("contacts", False))
+
+        self.profile_btn = tk.Button(
+            self.cv, text="\U0001f464", command=self.open_profile, font=btn_font,
+            bg=BUTTON_FILL_HEX, fg=self._accent(), activebackground=BUTTON_HOVER_HEX,
+            activeforeground="#ffffff", relief="flat", bd=0, width=3, pady=2, cursor="hand2",
+        )
+        self.profile_btn.bind("<Enter>", lambda e: self._set_btn_hover("profile", True))
+        self.profile_btn.bind("<Leave>", lambda e: self._set_btn_hover("profile", False))
+        self._profile_photo = None
+
         self._search_win = self.cv.create_window(0, 0, window=self.search_entry, anchor="e")
         self._btn_win = self.cv.create_window(0, 0, window=self.refresh_btn, anchor="e")
         self._gear_win = self.cv.create_window(0, 0, window=self.gear_btn, anchor="center")
@@ -829,6 +852,8 @@ class AppLauncher(tk.Tk):
         self._games_win = self.cv.create_window(0, 0, window=self.games_btn, anchor="center")
         self._browser_win = self.cv.create_window(0, 0, window=self.browser_btn, anchor="center")
         self._surprise_win = self.cv.create_window(0, 0, window=self.surprise_btn, anchor="center")
+        self._contacts_win = self.cv.create_window(0, 0, window=self.contacts_btn, anchor="center")
+        self._profile_win = self.cv.create_window(0, 0, window=self.profile_btn, anchor="center")
         self._search_bg = None
 
         self.bind("<Control-f>", self._focus_search)
@@ -1180,7 +1205,7 @@ class AppLauncher(tk.Tk):
                                  outline="", tags=("hdr", "accentbar"))
 
         right = w - MARGIN
-        rw, gw, aw, mw, bw, cw, dw, uw, gap, ew = 118, 44, 44, 44, 44, 44, 44, 44, 8, 190
+        rw, gw, aw, mw, bw, cw, dw, uw, vw, pw, gap, ew = 118, 44, 44, 44, 44, 44, 44, 44, 44, 44, 8, 190
         r1 = right - rw
         g2 = r1 - gap
         g1 = g2 - gw
@@ -1196,11 +1221,17 @@ class AppLauncher(tk.Tk):
         d1 = d2 - dw
         u2 = d1 - gap
         u1 = u2 - uw
-        s2 = u1 - gap
+        v2 = u1 - gap
+        v1 = v2 - vw
+        p2 = v1 - gap
+        p1 = p2 - pw
+        s2 = p1 - gap
         s1 = s2 - ew
 
         self._search_bg = self._round_rect(s1, 28, s2, 60, 16,
                                            fill=SEARCH_FILL_HEX, outline=self._card_border(), tags="hdr", width=1)
+        self._btn_bgs["profile"] = self._round_rect(p1, 28, p2, 60, 12, fill=BUTTON_FILL_HEX, outline="", tags="hdr", width=0)
+        self._btn_bgs["contacts"] = self._round_rect(v1, 28, v2, 60, 12, fill=BUTTON_FILL_HEX, outline="", tags="hdr", width=0)
         self._btn_bgs["surprise"] = self._round_rect(u1, 28, u2, 60, 12, fill=BUTTON_FILL_HEX, outline="", tags="hdr", width=0)
         self._btn_bgs["browser"] = self._round_rect(d1, 28, d2, 60, 12, fill=BUTTON_FILL_HEX, outline="", tags="hdr", width=0)
         self._btn_bgs["games"] = self._round_rect(c1, 28, c2, 60, 12, fill=BUTTON_FILL_HEX, outline="", tags="hdr", width=0)
@@ -1211,6 +1242,8 @@ class AppLauncher(tk.Tk):
         self._btn_bgs["refresh"] = self._round_rect(r1, 28, r2 := right, 60, 16, fill=BUTTON_FILL_HEX, outline="", tags="hdr", width=0)
 
         self.cv.coords(self._search_win, s2 - 10, 44)
+        self.cv.coords(self._profile_win, (p1 + p2) / 2, 44)
+        self.cv.coords(self._contacts_win, (v1 + v2) / 2, 44)
         self.cv.coords(self._surprise_win, (u1 + u2) / 2, 44)
         self.cv.coords(self._browser_win, (d1 + d2) / 2, 44)
         self.cv.coords(self._games_win, (c1 + c2) / 2, 44)
@@ -1220,6 +1253,8 @@ class AppLauncher(tk.Tk):
         self.cv.coords(self._gear_win, (g1 + g2) / 2, 44)
         self.cv.coords(self._btn_win, r2 - 8, 44)
         self.cv.tag_raise(self._search_win)
+        self.cv.tag_raise(self._profile_win)
+        self.cv.tag_raise(self._contacts_win)
         self.cv.tag_raise(self._surprise_win)
         self.cv.tag_raise(self._browser_win)
         self.cv.tag_raise(self._games_win)
@@ -1248,6 +1283,8 @@ class AppLauncher(tk.Tk):
         left = click_hint
         if self.config.get("show_count", True):
             left = f"{len(self.items)} apps  \u00b7  {left}"
+        if AppContacts.is_owner():
+            left = f"\u2b50 Owner  \u00b7  {left}"
         self.cv.create_text(MARGIN, h - 24, anchor="w",
                             text=left,
                             font=self.font_footer, fill=self._muted_color(), tags="ftr")
@@ -1666,6 +1703,25 @@ class AppLauncher(tk.Tk):
 
     def open_games(self):
         AppGames.GamesWindow(self)
+
+    def open_contacts(self):
+        AppContacts.ContactsWindow(self)
+
+    def open_profile(self):
+        AppContacts.ProfileWindow(self)
+
+    def refresh_profile_btn(self):
+        try:
+            key = AppContacts.avatar_key()
+            if not key:
+                self._profile_photo = None
+                self.profile_btn.config(text="\U0001f464", image="", width=3, pady=2)
+                return
+            letter = (self.config.get("username") or "?")[:1].upper()
+            self._profile_photo = AppContacts.avatar_photo(key, 40, letter, shape="rounded")
+            self.profile_btn.config(text="", image=self._profile_photo, width=0, pady=0)
+        except Exception:
+            pass
 
     def open_browser(self, url=None):
         browser_py = os.path.join(os.path.dirname(os.path.abspath(__file__)), "AppBrowser.py")

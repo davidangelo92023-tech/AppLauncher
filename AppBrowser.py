@@ -116,7 +116,64 @@ def normalize_url(u):
     return "https://" + u
 
 
-def make_toolbar_js(theme):
+ADBLOCK_SELECTORS = [
+    "ins.adsbygoogle",
+    "[data-ad-slot]", "[data-ad-client]", "[data-ad-format]", "[data-text-ad]",
+    "[class*=\"advert\"]", "[id*=\"advert\"]",
+    "[class*=\"ad-slot\"]", "[id*=\"ad-slot\"]",
+    "[class*=\"ad_unit\"]", "[id*=\"ad_unit\"]",
+    "[class*=\"ad-unit\"]", "[id*=\"ad-unit\"]",
+    "[class*=\"ad_banner\"]", "[id*=\"ad_banner\"]",
+    "[class*=\"ad-container\"]", "[id*=\"ad-container\"]",
+    "[class*=\"adsense\"]", "[id*=\"adsense\"]",
+    "[class*=\"doubleclick\"]", "[id*=\"doubleclick\"]",
+    "[class*=\"sponsor\"]", "[id*=\"sponsor\"]",
+    "[class*=\"promot\"]", "[id*=\"promot\"]",
+    "[class*=\"adbox\"]", "[id*=\"adbox\"]",
+    "[class*=\"adsbox\"]", "[id*=\"adsbox\"]",
+    "[aria-label=\"Advertisement\"]", "[aria-label=\"Ads\"]",
+    "iframe[src*=\"doubleclick\"]", "iframe[src*=\"googlesyndication\"]",
+    "iframe[src*=\"adservice\"]", "iframe[src*=\"adsystem\"]",
+    "iframe[src*=\"adnxs\"]", "iframe[src*=\"adserver\"]",
+    "img[src*=\"adserver\"]", "img[src*=\"doubleclick\"]",
+    ".gpt-ad", ".google-ads", ".banner-ad", ".ad-container", ".ad-slot",
+    ".ytp-ad-module", ".ytp-ad-overlay-container", ".video-ads", ".ad-showing",
+    ".ad", ".ads", ".adsbox", ".advert", ".advertisement", ".ad-banner", ".sponsored",
+    "#ad", "#ads", "#adv", "#advert", "#sponsored",
+]
+
+ADBLOCK_CSS = (",".join(ADBLOCK_SELECTORS) +
+    "{display:none!important;visibility:hidden!important;max-height:0!important;"
+    "overflow:hidden!important}")
+
+
+def adblock_enabled():
+    try:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        return bool(cfg.get("adblock", True))
+    except Exception:
+        return True
+
+
+def make_adblock_js(enabled):
+    return """
+(function () {
+  var id = 'pwv_adblock_css';
+  var el = document.getElementById(id);
+  if (!el) {
+    el = document.createElement('style');
+    el.id = id;
+    el.textContent = %s;
+    (document.head || document.documentElement).appendChild(el);
+  }
+  el.disabled = %s;
+  window.__adblockOn = !el.disabled;
+})();
+""" % (json.dumps(ADBLOCK_CSS), "false" if enabled else "true")
+
+
+def make_toolbar_js(theme, adblock_on=True):
     C = json.dumps(color_map(theme))
     return """
 (function () {
@@ -185,6 +242,24 @@ def make_toolbar_js(theme):
   tb.appendChild(btn('\\u27f3', function () { api('reload'); }, 'Reload (Ctrl+R)'));
   tb.appendChild(btn('\\u2302', function () { api('home'); }, 'Home'));
 
+  var adOn = %s;
+  var adBtn = btn(adOn ? '\\ud83d\\udee1' : '\\ud83d\\udeab', function () {
+    var on = window.__toggleAdblock();
+    try { window.pywebview.api.set_adblock(on); } catch (e) {}
+  }, 'Ad blocker: ' + (adOn ? 'on' : 'off'));
+  if (!adOn) { adBtn.style.opacity = 0.5; }
+  window.__toggleAdblock = function () {
+    var el = document.getElementById('pwv_adblock_css');
+    if (!el) return;
+    el.disabled = !el.disabled;
+    var on = !el.disabled;
+    adBtn.textContent = on ? '\\ud83d\\udee1' : '\\ud83d\\udeab';
+    adBtn.title = 'Ad blocker: ' + (on ? 'on' : 'off');
+    adBtn.style.opacity = on ? '1' : '0.5';
+    return on;
+  };
+  tb.appendChild(adBtn);
+
   var inp = document.createElement('input');
   inp.id = 'pwv_addr';
   inp.type = 'text';
@@ -206,7 +281,7 @@ def make_toolbar_js(theme):
     if (document.activeElement !== inp && inp.value !== location.href) inp.value = location.href;
   }, 500);
 })();
-""" % C
+""" % (C, "true" if adblock_on else "false")
 
 
 class Api:
@@ -231,6 +306,18 @@ class Api:
     def home(self):
         self._win.load_url(HOME)
 
+    def set_adblock(self, on):
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+            if not isinstance(cfg, dict):
+                cfg = {}
+            cfg["adblock"] = bool(on)
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, indent=2)
+        except Exception:
+            pass
+
 
 def main():
     theme = load_theme()
@@ -252,13 +339,17 @@ def main():
     )
     api.set_window(win)
 
-    def inject_toolbar():
+    def inject_all():
         try:
-            win.evaluate_js(make_toolbar_js(load_theme()))
+            win.evaluate_js(make_adblock_js(adblock_enabled()))
+        except Exception:
+            pass
+        try:
+            win.evaluate_js(make_toolbar_js(load_theme(), adblock_enabled()))
         except Exception:
             pass
 
-    win.events.loaded += inject_toolbar
+    win.events.loaded += inject_all
 
     def watch_theme():
         last = None

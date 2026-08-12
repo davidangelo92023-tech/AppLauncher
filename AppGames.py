@@ -83,6 +83,7 @@ class GamesWindow(tk.Toplevel):
             ("2048", "Merge the tiles", Tile2048Window),
             ("Wordle", "Guess the word in 6", WordleWindow),
             ("Memory", "Match all the pairs", MemoryWindow),
+            ("Pong", "Beat the AI to 7 points", PongWindow),
         ]
         grid = tk.Frame(self, bg=BG)
         grid.pack(fill="both", expand=True, padx=16, pady=12)
@@ -98,6 +99,153 @@ class GamesWindow(tk.Toplevel):
                       font=("Segoe UI", 11, "bold"), pady=8, cursor="hand2"
                       ).pack(fill="x", padx=8, pady=(8, 2))
             tk.Label(cell, text=desc, font=("Segoe UI", 8), bg=CARD, fg=MUTED).pack(padx=8, pady=(0, 8))
+
+# ---------------- Pong ----------------
+
+class PongWindow(tk.Toplevel):
+    W, H = 560, 360
+    PW, PH = 10, 70
+    WIN_SCORE = 7
+
+    def __init__(self, app=None):
+        super().__init__(app)
+        self.title("Pong")
+        self.configure(bg=BG)
+        self.resizable(False, False)
+        self.best = _load_scores().get("pong", 0)
+        self._reset()
+
+        _header(self, self, "Pong", "first to 7 \u2014 move your mouse")
+        self.score_lbl = tk.Label(self, text="You 0  \u2014  AI 0   Best 0",
+                                  font=("Segoe UI", 10, "bold"), bg=BG, fg=TEXT)
+        self.score_lbl.pack()
+        self.cv = tk.Canvas(self, width=self.W, height=self.H, bg="#0d1019", highlightthickness=0)
+        self.cv.pack(padx=16, pady=8)
+        self.cv.bind("<Motion>", self._mouse)
+        self.cv.bind("<B1-Motion>", self._mouse)
+        self.bind("<KeyPress>", self._key)
+        self.focus_set()
+        self._serve()
+        self._tick()
+
+    def _reset(self):
+        self.py = self.H / 2 - self.PH / 2
+        self.ay = self.H / 2 - self.PH / 2
+        self.pscore = 0
+        self.ascore = 0
+        self.gameover = False
+        self.speed = 4.8
+
+    def _serve(self):
+        self.bx, self.by = self.W / 2, self.H / 2
+        self.bdx = 1 if random.random() < 0.5 else -1
+        self.bdy = math.tan(random.uniform(-0.55, 0.55))
+
+    def _mouse(self, e):
+        if self.gameover:
+            return
+        self.py = min(max(0, e.y - self.PH / 2), self.H - self.PH)
+        self._draw()
+
+    def _key(self, e):
+        if e.keysym in ("r", "R"):
+            self._reset()
+            self._serve()
+            self._draw()
+            return
+        if self.gameover:
+            return
+        if e.keysym in ("Up", "w", "W"):
+            self.py = max(0, self.py - 22)
+        elif e.keysym in ("Down", "s", "S"):
+            self.py = min(self.H - self.PH, self.py + 22)
+        self._draw()
+
+    def _step(self):
+        self.bx += self.bdx * self.speed
+        self.by += self.bdy * self.speed
+        if self.by <= 0:
+            self.by = 0
+            self.bdy = abs(self.bdy)
+        elif self.by >= self.H:
+            self.by = self.H
+            self.bdy = -abs(self.bdy)
+
+        if self.bdx > 0:
+            target = self.by - self.PH / 2
+            if self.ay < target - 2:
+                self.ay = min(self.H - self.PH, self.ay + 4.2)
+            elif self.ay > target + 2:
+                self.ay = max(0, self.ay - 4.2)
+        else:
+            mid = self.H / 2 - self.PH / 2
+            if self.ay < mid - 2:
+                self.ay = min(self.H - self.PH, self.ay + 2.0)
+            elif self.ay > mid + 2:
+                self.ay = max(0, self.ay - 2.0)
+
+        if self.bdx < 0:
+            if self.bx <= 20 + self.PW:
+                if self.py <= self.by <= self.py + self.PH:
+                    self.bx = 20 + self.PW
+                    self._bounce(self.py)
+                elif self.bx < 0:
+                    self._score("ai")
+                    return
+        elif self.bx >= self.W - 20 - self.PW:
+            if self.ay <= self.by <= self.ay + self.PH:
+                self.bx = self.W - 20 - self.PW
+                self._bounce(self.ay)
+            elif self.bx > self.W:
+                self._score("player")
+                return
+
+    def _bounce(self, paddle_top):
+        rel = (self.by - paddle_top) / self.PH - 0.5
+        self.bdx = -self.bdx * 1.05
+        self.bdy = rel * 1.6
+        self.speed = min(11.0, self.speed + 0.35)
+
+    def _score(self, who):
+        if who == "player":
+            self.pscore += 1
+        else:
+            self.ascore += 1
+        if self.pscore >= self.WIN_SCORE or self.ascore >= self.WIN_SCORE:
+            self.gameover = True
+            if self.pscore > self.best:
+                self.best = self.pscore
+                data = _load_scores()
+                data["pong"] = self.best
+                _save_scores(data)
+        else:
+            self._serve()
+
+    def _tick(self):
+        if not self.gameover:
+            self._step()
+        self._draw()
+        self.after(16, self._tick)
+
+    def _draw(self):
+        c = self.cv
+        c.delete("all")
+        c.create_rectangle(20, self.py, 20 + self.PW, self.py + self.PH,
+                           fill="#6c8cff", outline="")
+        c.create_rectangle(self.W - 20 - self.PW, self.ay, self.W - 20, self.ay + self.PH,
+                           fill="#ff6b6b", outline="")
+        for y in range(10, self.H, 26):
+            c.create_rectangle(self.W / 2 - 2, y, self.W / 2 + 2, y + 12, fill=MUTED, outline="")
+        c.create_oval(self.bx - 7, self.by - 7, self.bx + 7, self.by + 7,
+                      fill="#e9ecf5", outline="")
+        self.score_lbl.config(text=f"You {self.pscore}  \u2014  AI {self.ascore}   Best {max(self.best, self.pscore)}")
+        if self.gameover:
+            win = self.pscore > self.ascore
+            c.create_text(self.W // 2, self.H // 2 - 18, text="YOU WIN!" if win else "AI WINS",
+                          fill=GREEN if win else RED,
+                          font=tkfont.Font(family="Segoe UI", size=30, weight="bold"))
+            c.create_text(self.W // 2, self.H // 2 + 22,
+                          text="press R to restart", fill=TEXT, font=("Segoe UI", 12))
 
 
 # ---------------- Chess ----------------
