@@ -573,6 +573,7 @@ class AppLauncher(tk.Tk):
         self._anim_jobs = []
         self._confetti_jobs = []
         self._confetti = []
+        self._spin_job = None
         self._particles = []
         self._allow_anim = True
         self._aurora_job = None
@@ -811,6 +812,14 @@ class AppLauncher(tk.Tk):
         self.browser_btn.bind("<Enter>", lambda e: self._set_btn_hover("browser", True))
         self.browser_btn.bind("<Leave>", lambda e: self._set_btn_hover("browser", False))
 
+        self.surprise_btn = tk.Button(
+            self.cv, text="\U0001f3b0", command=self.open_surprise, font=tkfont.Font(family="Segoe UI", size=13),
+            bg=BUTTON_FILL_HEX, fg=self._accent(), activebackground=BUTTON_HOVER_HEX,
+            activeforeground="#ffffff", relief="flat", bd=0, width=3, pady=2, cursor="hand2",
+        )
+        self.surprise_btn.bind("<Enter>", lambda e: self._set_btn_hover("surprise", True))
+        self.surprise_btn.bind("<Leave>", lambda e: self._set_btn_hover("surprise", False))
+
         self._search_win = self.cv.create_window(0, 0, window=self.search_entry, anchor="e")
         self._btn_win = self.cv.create_window(0, 0, window=self.refresh_btn, anchor="e")
         self._gear_win = self.cv.create_window(0, 0, window=self.gear_btn, anchor="center")
@@ -819,12 +828,14 @@ class AppLauncher(tk.Tk):
         self._assistant_win = self.cv.create_window(0, 0, window=self.assistant_btn, anchor="center")
         self._games_win = self.cv.create_window(0, 0, window=self.games_btn, anchor="center")
         self._browser_win = self.cv.create_window(0, 0, window=self.browser_btn, anchor="center")
+        self._surprise_win = self.cv.create_window(0, 0, window=self.surprise_btn, anchor="center")
         self._search_bg = None
 
         self.bind("<Control-f>", self._focus_search)
         self.bind("<Control-r>", lambda e: self.refresh())
         self.bind("<Control-g>", lambda e: self.open_games())
         self.bind("<Control-b>", lambda e: self.open_browser())
+        self.bind("<Control-s>", lambda e: self.open_surprise())
         self.bind("<Escape>", lambda e: self._clear_search() if not self._placeholder else None)
 
     def _focus_search(self, event=None):
@@ -1169,7 +1180,7 @@ class AppLauncher(tk.Tk):
                                  outline="", tags=("hdr", "accentbar"))
 
         right = w - MARGIN
-        rw, gw, aw, mw, bw, cw, dw, gap, ew = 118, 44, 44, 44, 44, 44, 44, 8, 190
+        rw, gw, aw, mw, bw, cw, dw, uw, gap, ew = 118, 44, 44, 44, 44, 44, 44, 44, 8, 190
         r1 = right - rw
         g2 = r1 - gap
         g1 = g2 - gw
@@ -1183,11 +1194,14 @@ class AppLauncher(tk.Tk):
         c1 = c2 - cw
         d2 = c1 - gap
         d1 = d2 - dw
-        s2 = d1 - gap
+        u2 = d1 - gap
+        u1 = u2 - uw
+        s2 = u1 - gap
         s1 = s2 - ew
 
         self._search_bg = self._round_rect(s1, 28, s2, 60, 16,
                                            fill=SEARCH_FILL_HEX, outline=self._card_border(), tags="hdr", width=1)
+        self._btn_bgs["surprise"] = self._round_rect(u1, 28, u2, 60, 12, fill=BUTTON_FILL_HEX, outline="", tags="hdr", width=0)
         self._btn_bgs["browser"] = self._round_rect(d1, 28, d2, 60, 12, fill=BUTTON_FILL_HEX, outline="", tags="hdr", width=0)
         self._btn_bgs["games"] = self._round_rect(c1, 28, c2, 60, 12, fill=BUTTON_FILL_HEX, outline="", tags="hdr", width=0)
         self._btn_bgs["assistant"] = self._round_rect(b1, 28, b2, 60, 12, fill=BUTTON_FILL_HEX, outline="", tags="hdr", width=0)
@@ -1197,6 +1211,7 @@ class AppLauncher(tk.Tk):
         self._btn_bgs["refresh"] = self._round_rect(r1, 28, r2 := right, 60, 16, fill=BUTTON_FILL_HEX, outline="", tags="hdr", width=0)
 
         self.cv.coords(self._search_win, s2 - 10, 44)
+        self.cv.coords(self._surprise_win, (u1 + u2) / 2, 44)
         self.cv.coords(self._browser_win, (d1 + d2) / 2, 44)
         self.cv.coords(self._games_win, (c1 + c2) / 2, 44)
         self.cv.coords(self._assistant_win, (b1 + b2) / 2, 44)
@@ -1205,6 +1220,7 @@ class AppLauncher(tk.Tk):
         self.cv.coords(self._gear_win, (g1 + g2) / 2, 44)
         self.cv.coords(self._btn_win, r2 - 8, 44)
         self.cv.tag_raise(self._search_win)
+        self.cv.tag_raise(self._surprise_win)
         self.cv.tag_raise(self._browser_win)
         self.cv.tag_raise(self._games_win)
         self.cv.tag_raise(self._assistant_win)
@@ -1574,6 +1590,9 @@ class AppLauncher(tk.Tk):
 
     def _launch(self, idx):
         name, path, is_dir = self.visible[idx]
+        self._do_launch(name, path, is_dir)
+
+    def _do_launch(self, name, path, is_dir):
         if not os.path.exists(path):
             self._flash_status(f"Cannot find: {name}")
             return
@@ -1657,6 +1676,44 @@ class AppLauncher(tk.Tk):
         if url:
             cmd.append(url)
         subprocess.Popen(cmd, shell=False, close_fds=True)
+
+    # ---------- surprise me ----------
+    def open_surprise(self):
+        if self._spin_job:
+            return
+        pool = [it for it in self.items if os.path.exists(it[1])]
+        if not pool:
+            self._flash_status("No apps to surprise you with!")
+            return
+        pick = random.choice(pool)
+        n = random.randint(8, 12)
+        self._spin_count = 0
+        self._spin_steps = n
+        self._spin_names = [random.choice(pool)[0] for _ in range(n)]
+        self._spin_pick = pick
+        try:
+            play_sound("Sweep")
+        except Exception:
+            pass
+        self._tick_spin()
+
+    def _tick_spin(self):
+        if self._spin_job:
+            self.after_cancel(self._spin_job)
+            self._spin_job = None
+        i = self._spin_count
+        if i < self._spin_steps:
+            self._flash_status(f"\U0001f3b0  {self._spin_names[i]} \u2026?")
+            self._spin_count += 1
+            self._spin_job = self.after(90 + i * 16, self._tick_spin)
+        else:
+            name, path, is_dir = self._spin_pick
+            self._flash_status(f"\U0001f3b0  Surprise! Launching {name}")
+            try:
+                play_sound("Coin")
+            except Exception:
+                pass
+            self._do_launch(name, path, is_dir)
 
     def open_music(self):
         music_bat = os.path.join(APPS_DIR, "Music", "Music.bat")
