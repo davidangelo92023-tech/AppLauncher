@@ -129,6 +129,10 @@ def net_can_kick(net):
     return net_rank(net) >= 1
 
 
+# Muting is gated at the same tier as kicking - see server/main.py.
+net_can_mute = net_can_kick
+
+
 def net_can_ban(net):
     """Mod and up."""
     return net_rank(net) >= 2
@@ -887,8 +891,8 @@ class SpecialMenuWindow(tk.Toplevel):
         self.on_change = on_change
         self.title("Special Menu")
         self.configure(bg=BG)
-        self.geometry("460x600")
-        self.minsize(420, 480)
+        self.geometry("460x660")
+        self.minsize(420, 520)
         self.transient(app)
         self.results = []
         self._selected_row = None
@@ -902,7 +906,7 @@ class SpecialMenuWindow(tk.Toplevel):
         tk.Button(header_row, text="View Log", command=self.open_mod_log, bg=CARD2, fg=TEXT,
                   activebackground="#343c58", activeforeground="#ffffff", relief="flat", bd=0,
                   padx=10, pady=4, font=("Segoe UI", 8, "bold"), cursor="hand2").pack(side="right")
-        tk.Label(self, text="Find any account, then Kick, Ban, or set their role.",
+        tk.Label(self, text="Find any account, then Kick, Ban, Mute, or set their role.",
                  font=("Segoe UI", 8), bg=BG, fg=MUTED, anchor="w").pack(fill="x", padx=14, pady=(2, 8))
 
         search_row = tk.Frame(self, bg=BG)
@@ -948,6 +952,20 @@ class SpecialMenuWindow(tk.Toplevel):
         self.unban_btn = b(actions, "Unban", self.do_unban, GREEN, "#0d1220")
         self.unban_btn.pack(side="left")
 
+        mute_row = tk.Frame(self, bg=BG)
+        mute_row.pack(fill="x", padx=14, pady=(6, 0))
+        self.mute_btn = b(mute_row, "Mute", self.do_mute, "#8a5a00", "#ffffff")
+        self.mute_btn.pack(side="left", padx=(0, 6))
+        self.unmute_btn = b(mute_row, "Unmute", self.do_unmute, GREEN, "#0d1220")
+        self.unmute_btn.pack(side="left", padx=(0, 10))
+        tk.Label(mute_row, text="for", font=("Segoe UI", 9), bg=BG, fg=MUTED).pack(side="left", padx=(0, 4))
+        self.mute_min_var = tk.StringVar(value="30")
+        mute_entry = tk.Entry(mute_row, textvariable=self.mute_min_var, width=5, bg=CARD2, fg=TEXT,
+                              insertbackground=TEXT, relief="flat", bd=0, highlightthickness=0,
+                              font=("Segoe UI", 9), justify="center")
+        mute_entry.pack(side="left", ipady=4)
+        tk.Label(mute_row, text="min", font=("Segoe UI", 9), bg=BG, fg=MUTED).pack(side="left", padx=(4, 0))
+
         reason_row = tk.Frame(self, bg=BG)
         reason_row.pack(fill="x", padx=14, pady=(6, 0))
         tk.Label(reason_row, text="Reason (optional):", font=("Segoe UI", 9), bg=BG, fg=MUTED).pack(
@@ -975,7 +993,7 @@ class SpecialMenuWindow(tk.Toplevel):
 
     def _set_actions_enabled(self, enabled):
         state = "normal" if enabled else "disabled"
-        for w in (self.kick_btn, self.ban_btn, self.unban_btn):
+        for w in (self.kick_btn, self.ban_btn, self.unban_btn, self.mute_btn, self.unmute_btn):
             w.config(state=state)
 
     def search(self):
@@ -996,7 +1014,8 @@ class SpecialMenuWindow(tk.Toplevel):
                 f" [{self.ROLE_LABELS.get(r.get('role', 'member'), r.get('role'))}]"
                 if r.get("role", "member") != "member" else "")
             banned = " (banned)" if r.get("banned") else ""
-            self.lb.insert("end", f"{r['username']}{tag}{banned}")
+            muted = " (muted)" if r.get("muted") else ""
+            self.lb.insert("end", f"{r['username']}{tag}{banned}{muted}")
 
     def _on_select(self, event=None):
         sel = self.lb.curselection()
@@ -1013,6 +1032,8 @@ class SpecialMenuWindow(tk.Toplevel):
         role = r.get("role", "member")
         perk = self.ROLE_PERKS.get(role, "")
         status = "banned" if r.get("banned") else "not banned"
+        if r.get("muted"):
+            status += ", muted"
         self.detail_lbl.config(
             text=f"{r['username']} \u2014 role: {self.ROLE_LABELS.get(role, role)} ({perk}) \u2014 {status}")
         self.role_var.set(role)
@@ -1101,6 +1122,47 @@ class SpecialMenuWindow(tk.Toplevel):
         self.reason_var.set("")
         self._after_change(r["username"])
 
+    def _mute_minutes(self):
+        raw = (self.mute_min_var.get() or "").strip()
+        try:
+            minutes = int(raw)
+        except ValueError:
+            messagebox.showinfo("Mute duration", "Enter a whole number of minutes.", parent=self)
+            return None
+        if minutes < 1:
+            messagebox.showinfo("Mute duration", "Duration must be at least 1 minute.", parent=self)
+            return None
+        return minutes
+
+    def do_mute(self):
+        r = self._selected_or_warn()
+        if not r:
+            return
+        minutes = self._mute_minutes()
+        if minutes is None:
+            return
+        if not messagebox.askyesno("Mute", f"Mute {r['username']} for {minutes} minute(s)?", parent=self):
+            return
+        try:
+            self.net.mute(r["id"], minutes, self._reason())
+        except AppNet.NetError as e:
+            messagebox.showwarning("Couldn't mute", e.message, parent=self)
+            return
+        self.reason_var.set("")
+        self._after_change(r["username"])
+
+    def do_unmute(self):
+        r = self._selected_or_warn()
+        if not r:
+            return
+        try:
+            self.net.unmute(r["id"], self._reason())
+        except AppNet.NetError as e:
+            messagebox.showwarning("Couldn't unmute", e.message, parent=self)
+            return
+        self.reason_var.set("")
+        self._after_change(r["username"])
+
     def open_mod_log(self):
         try:
             entries = self.net.mod_log()
@@ -1118,6 +1180,7 @@ class ModLogWindow(tk.Toplevel):
         "kick": "Kicked",
         "ban": "Banned",
         "unban": "Unbanned",
+        "unmute": "Unmuted",
     }
 
     def __init__(self, app, entries):
@@ -1153,6 +1216,9 @@ class ModLogWindow(tk.Toplevel):
             if action.startswith("role:"):
                 role = action.split(":", 1)[1]
                 label = f"Set role to {role.replace('_', '-').title()}"
+            elif action.startswith("mute:"):
+                mins = action.split(":", 1)[1]
+                label = f"Muted for {mins} min"
             else:
                 label = self.ACTION_LABELS.get(action, action)
             ts = e.get("ts") or 0
@@ -1254,6 +1320,14 @@ class ChatWindow(tk.Toplevel):
             tk.Button(pad, text="Kick", command=lambda: self._admin(True), bg=RED, fg="#ffffff",
                       activebackground=RED, activeforeground="#ffffff", relief="flat", bd=0,
                       padx=10, pady=6, font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="right", padx=(0, 6))
+        if self._kick_ok() and self.net:
+            # Mute is net-only (there's nothing to mute in local/offline
+            # chats) and same tier as Kick - a quick 30-minute mute right
+            # from the conversation, without leaving it. Longer/custom
+            # durations still go through the Special Menu.
+            tk.Button(pad, text="Mute", command=self._mute_from_chat, bg="#8a5a00", fg="#ffffff",
+                      activebackground="#8a5a00", activeforeground="#ffffff", relief="flat", bd=0,
+                      padx=10, pady=6, font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="right", padx=(0, 6))
         if self._ban_ok():
             tk.Button(pad, text="Ban", command=lambda: self._admin(False), bg="#b3001b", fg="#ffffff",
                       activebackground="#b3001b", activeforeground="#ffffff", relief="flat", bd=0,
@@ -1324,6 +1398,22 @@ class ChatWindow(tk.Toplevel):
         elif hasattr(parent, "refresh_list"):
             parent.refresh_list()
         messagebox.showinfo(action, f"{name} has been {'kicked' if kick else 'banned'}.", parent=parent)
+
+    def _mute_from_chat(self):
+        if not (self._kick_ok() and self.net):
+            return
+        name = self.contact["name"]
+        if not messagebox.askyesno("Mute", f"Mute {name} for 30 minutes?\n\n"
+                                           f"They won't be able to send messages until it expires. "
+                                           f"For a custom duration, use the Special Menu instead.",
+                                   parent=self):
+            return
+        try:
+            self.net.mute(self.remote_id, 30)
+        except AppNet.NetError as e:
+            messagebox.showwarning("Couldn't mute", e.message, parent=self)
+            return
+        messagebox.showinfo("Mute", f"{name} has been muted for 30 minutes.", parent=self)
 
     def toggle_call(self):
         if self.net:

@@ -100,6 +100,9 @@ def init_db():
     # trial_mod < mod < co_owner < owner). is_admin is left in place, unused,
     # rather than dropped - harmless, and avoids a destructive migration.
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'member';")
+    # 0 (or NULL, for rows from before this column existed) means "not
+    # muted"; otherwise a unix timestamp the mute expires at.
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS muted_until DOUBLE PRECISION NOT NULL DEFAULT 0;")
     conn.commit()
     conn.close()
 
@@ -228,6 +231,15 @@ def kick_guard(user: Any):
         raise HTTPException(403, "Only the Owner or a moderator can do that.")
 
 
+# Muting is the same tier as kicking (Trial Mod and up) - it's a lighter
+# touch than a kick, so it doesn't need a higher bar.
+mute_guard = kick_guard
+
+
+def is_muted(user: Any) -> bool:
+    return (user.get("muted_until") or 0) > now()
+
+
 def ban_guard(user: Any):
     # Mod and up can ban/unban.
     if user_rank(user) < 2:
@@ -329,6 +341,12 @@ class RoleIn(BaseModel):
     reason: Optional[str] = None
 
 
+class MuteIn(BaseModel):
+    id: str
+    minutes: int
+    reason: Optional[str] = None
+
+
 class UserOut:
     @staticmethod
     def json(user):
@@ -338,6 +356,7 @@ class UserOut:
             "is_owner": is_owner_user(user),
             "is_admin": is_admin_user(user),
             "role": user_role(user),
+            "muted_until": user.get("muted_until") or 0,
         }
 
 
@@ -445,7 +464,7 @@ def list_friends(user: Any = Depends(auth)):
     conn = db()
     rows = execute(
         conn,
-        "SELECT u.id, u.username, u.banned, u.is_admin, u.role FROM friends f "
+        "SELECT u.id, u.username, u.banned, u.is_admin, u.role, u.muted_until FROM friends f "
         "JOIN users u ON u.id IN (f.user_a, f.user_b) "
         "WHERE (f.user_a = %s OR f.user_b = %s) AND u.id != %s",
         (user["id"], user["id"], user["id"]),
@@ -458,6 +477,7 @@ def list_friends(user: Any = Depends(auth)):
             "banned": bool(r["banned"]),
             "is_admin": is_admin_user(r),
             "role": user_role(r),
+            "muted": is_muted(r),
         }
         for r in rows
     ]
@@ -544,6 +564,47 @@ def unban(body: TargetIn, user: Any = Depends(auth)):
     return {"ok": True}
 
 
+@app.post("/api/mute")
+def mute(body: MuteIn, user: Any = Depends(auth)):
+    # Trial Mod and up can mute, but protect_target still stops anyone from
+    # muting the Owner or someone at/above their own rank. A mute only
+    # blocks sending messages - it doesn't kick or ban them from anything.
+    mute_guard(user)
+    target = get_user(body.id or "")
+    if target is None:
+        raise HTTPException(404, "User not found.")
+    if target["id"] == user["id"]:
+        raise HTTPException(400, "You can't mute yourself.")
+    protect_target(user, target)
+    minutes = max(1, min(int(body.minutes or 0), 7 * 24 * 60))  # 1 min .. 7 days
+    until = now() + minutes * 60
+    conn = db()
+    execute(conn, "UPDATE users SET muted_until = %s WHERE id = %s", (until, target["id"]))
+    conn.commit()
+    conn.close()
+    muter = "the Owner" if is_owner_user(user) else user_role(user).replace("_", "-").title()
+    reason = (body.reason or "").strip()
+    suffix = f" Reason: {reason}" if reason else ""
+    add_notice(target["id"], f"You were muted for {minutes} minute(s) by {muter} ({user['username']}).{suffix}")
+    add_mod_log(user, f"mute:{minutes}", target, reason)
+    return {"ok": True}
+
+
+@app.post("/api/unmute")
+def unmute(body: TargetIn, user: Any = Depends(auth)):
+    mute_guard(user)
+    target = get_user(body.id or "")
+    if target is None:
+        raise HTTPException(404, "User not found.")
+    conn = db()
+    execute(conn, "UPDATE users SET muted_until = 0 WHERE id = %s", (target["id"],))
+    conn.commit()
+    conn.close()
+    add_notice(target["id"], "Your mute has been lifted.")
+    add_mod_log(user, "unmute", target, (body.reason or "").strip())
+    return {"ok": True}
+
+
 @app.get("/api/bans")
 def list_bans(user: Any = Depends(auth)):
     # Full ban-list visibility is Co-Owner and up, per the permission tiers.
@@ -597,7 +658,7 @@ def owner_search(body: UsernameIn, user: Any = Depends(auth)):
     conn = db()
     rows = execute(
         conn,
-        "SELECT id, username, banned, is_admin, role FROM users WHERE username ILIKE %s LIMIT 25",
+        "SELECT id, username, banned, is_admin, role, muted_until FROM users WHERE username ILIKE %s LIMIT 25",
         (f"%{q}%",),
     ).fetchall()
     conn.close()
@@ -608,6 +669,7 @@ def owner_search(body: UsernameIn, user: Any = Depends(auth)):
             "banned": bool(r["banned"]),
             "is_owner": is_owner_user(r),
             "role": user_role(r),
+            "muted": is_muted(r),
         }
         for r in rows
     ]
@@ -663,6 +725,10 @@ def get_messages(with_user: str, after: float = 0, user: Any = Depends(auth)):
 
 @app.post("/api/messages/send")
 def send_message(body: MessageIn, user: Any = Depends(auth)):
+    if is_muted(user):
+        remaining = int((user.get("muted_until") or 0) - now())
+        mins = max(1, remaining // 60)
+        raise HTTPException(403, f"You're muted for another {mins} minute(s).")
     text = (body.text or "").strip()
     if not text:
         raise HTTPException(400, "Empty message.")

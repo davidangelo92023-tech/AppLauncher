@@ -132,6 +132,23 @@ and `AppFriends.exe` should still be fine to use on their own.
 
 ## What's new
 
+- **Minesweeper** - a ninth game in the Games window: classic 9x9, 10-mine
+  board. Left-click to clear a cell (the first click is never a mine),
+  right-click to flag one you think is dangerous. Clearing every non-mine
+  cell wins; your win count is remembered across sessions.
+- **"Recent" filter chip** - a "\U0001f550 Recent" chip appears in the filter
+  row (next to All/Favorites) once you've launched anything, showing your
+  last 10 launched apps, most recent first. Local to this PC only, like
+  your launch counts - it isn't part of cloud sync or export/import.
+- **Mute (Special Menu)** - alongside Kick/Ban, the Special Menu now has a
+  Mute/Unmute pair with a duration box (in minutes, defaults to 30). A
+  muted account can still sign in, see contacts, and receive messages, but
+  can't send any until the mute expires or an Unmute is issued. Same
+  permission tier as Kick (Trial Mod and up can mute), and it's included in
+  the Reason box and moderation log like everything else in the Special
+  Menu. A quick 30-minute Mute button is also on the regular chat window
+  itself (same tier as Kick) for muting without leaving the conversation -
+  use the Special Menu for a custom duration.
 - **Reasons + a moderation log** - Kick, Ban/Unban, and role changes in the
   Special Menu now have an optional "Reason" box. Whatever you type there
   gets included in the notice the person receives and saved to a running

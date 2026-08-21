@@ -12,7 +12,7 @@ CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 # predate a security fix. Bump this together with the root VERSION file and
 # server/main.py's MIN_CLIENT_VERSION whenever you push a fix that must not
 # keep running on older clients.
-CLIENT_VERSION = "1.4.1"
+CLIENT_VERSION = "1.4.2"
 
 SESSION_KEYS = ("net_url", "net_token", "net_id", "net_username", "net_owner", "net_admin", "net_role")
 
@@ -176,6 +176,12 @@ class Net:
 
     def bans(self):
         return self._req("GET", "/api/bans")
+
+    def mute(self, user_id, minutes, reason=None):
+        return self._req("POST", "/api/mute", {"id": user_id, "minutes": minutes, "reason": reason})
+
+    def unmute(self, user_id, reason=None):
+        return self._req("POST", "/api/unmute", {"id": user_id, "reason": reason})
 
     def set_role(self, user_id, role, reason=None):
         return self._req("POST", "/api/roles/set", {"id": user_id, "role": role, "reason": reason})

@@ -143,6 +143,8 @@ MARGIN = 34
 HEADER_Y = 150
 
 FAVORITES_LABEL = "★ Favorites"
+RECENT_LABEL = "\U0001f550 Recent"
+RECENT_LIMIT = 10
 
 # ------- update check -------
 # Bump VERSION and push a matching VERSION file to the repo's default branch
@@ -698,7 +700,8 @@ class AppLauncher(tk.Tk):
         self._update_version = None
         self._updating = False
         (self._launches, self._order, self._favorites, self._categories,
-         self._dock, self._schedules, self._app_colors, self._app_icons) = self._load_stats()
+         self._dock, self._schedules, self._app_colors, self._app_icons,
+         self._last_launched) = self._load_stats()
         self._active_category = "All"
         self._schedule_fired = {}
         self._schedule_job = None
@@ -758,10 +761,11 @@ class AppLauncher(tk.Tk):
                 return (data.get("launches", {}), data.get("order", []),
                         set(data.get("favorites", [])), data.get("categories", {}),
                         data.get("dock", []), data.get("schedules", {}),
-                        data.get("app_colors", {}), data.get("app_icons", {}))
+                        data.get("app_colors", {}), data.get("app_icons", {}),
+                        data.get("last_launched", {}))
         except Exception:
             pass
-        return {}, [], set(), {}, [], {}, {}, {}
+        return {}, [], set(), {}, [], {}, {}, {}, {}
 
     def _save_stats(self):
         try:
@@ -770,7 +774,8 @@ class AppLauncher(tk.Tk):
                 json.dump({"launches": self._launches, "order": self._order,
                           "favorites": sorted(self._favorites), "categories": self._categories,
                           "dock": self._dock, "schedules": self._schedules,
-                          "app_colors": self._app_colors, "app_icons": self._app_icons},
+                          "app_colors": self._app_colors, "app_icons": self._app_icons,
+                          "last_launched": self._last_launched},
                          f, indent=2)
         except Exception:
             pass
@@ -845,8 +850,22 @@ class AppLauncher(tk.Tk):
         self._flash_status("Settings imported")
 
     def _record_launch(self, path):
+        had_recent = bool(self._last_launched)
         self._launches[path] = self._launches.get(path, 0) + 1
+        self._last_launched[path] = time.time()
         self._save_stats()
+        if not had_recent:
+            # First launch ever recorded - the "Recent" chip just became
+            # eligible to show, so redraw the chip row to reveal it.
+            self._layout_chips()
+        elif self._active_category == RECENT_LABEL:
+            self._apply_filter()
+
+    def _recent_paths(self):
+        """Paths of the most recently launched apps, most-recent first,
+        capped at RECENT_LIMIT - backs the "Recent" filter chip."""
+        ranked = sorted(self._last_launched.items(), key=lambda kv: kv[1], reverse=True)
+        return [p for p, _ in ranked[:RECENT_LIMIT]]
 
     def set_config(self, key, value):
         self.config[key] = value
@@ -1618,7 +1637,10 @@ class AppLauncher(tk.Tk):
     # ---------- category filter chips ----------
     def _layout_chips(self):
         self.cv.delete("chips")
-        labels = ["All", FAVORITES_LABEL] + self._all_categories()
+        labels = ["All", FAVORITES_LABEL]
+        if self._last_launched:
+            labels.append(RECENT_LABEL)
+        labels += self._all_categories()
         x = MARGIN
         cy = 100
         h = 24
@@ -1676,7 +1698,7 @@ class AppLauncher(tk.Tk):
         else:
             self._categories.pop(path, None)
         self._save_stats()
-        if self._active_category not in ("All", FAVORITES_LABEL, *self._all_categories()):
+        if self._active_category not in ("All", FAVORITES_LABEL, RECENT_LABEL, *self._all_categories()):
             self._active_category = "All"
         self._layout_chips()
         self._apply_filter()
@@ -1885,6 +1907,8 @@ class AppLauncher(tk.Tk):
             return True
         if self._active_category == FAVORITES_LABEL:
             return item[1] in self._favorites
+        if self._active_category == RECENT_LABEL:
+            return item[1] in self._recent_paths()
         return self._categories.get(item[1]) == self._active_category
 
     def _all_categories(self):
@@ -1899,6 +1923,9 @@ class AppLauncher(tk.Tk):
             items = [it for it in items if query in it[0].lower()]
         if self._active_category != "All":
             items = [it for it in items if self._matches_category(it)]
+        if self._active_category == RECENT_LABEL:
+            order = self._recent_paths()
+            items = sorted(items, key=lambda it: order.index(it[1]) if it[1] in order else len(order))
         self.visible = items
         self._allow_anim = True
         self._offset = 0

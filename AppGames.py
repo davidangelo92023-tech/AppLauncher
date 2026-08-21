@@ -72,7 +72,7 @@ class GamesWindow(tk.Toplevel):
         self.title("Games")
         self.configure(bg=BG)
         self.resizable(False, False)
-        self.geometry("760x520")
+        self.geometry("760x610")
         _header(self, self, "Games", "pick a game to play")
 
         games = [
@@ -84,6 +84,7 @@ class GamesWindow(tk.Toplevel):
             ("Wordle", "Guess the word in 6", WordleWindow),
             ("Memory", "Match all the pairs", MemoryWindow),
             ("Pong", "Beat the AI to 7 points", PongWindow),
+            ("Minesweeper", "Clear the board, avoid the mines", MinesweeperWindow),
         ]
         grid = tk.Frame(self, bg=BG)
         grid.pack(fill="both", expand=True, padx=16, pady=12)
@@ -1640,4 +1641,169 @@ class MemoryWindow(tk.Toplevel):
                 c.create_text(x + (self.CELL - 8) // 2, y + (self.CELL - 8) // 2,
                               text="\u2753", fill="#0d1220",
                               font=tkfont.Font(family="Segoe UI", size=26))
+
+
+# ---------------- Minesweeper ----------------
+
+MINE_NUM_COLORS = {
+    1: "#6c8cff", 2: "#43c97f", 3: "#ff6b6b", 4: "#9d7bff",
+    5: "#ffb86c", 6: "#4fd6d6", 7: "#e9ecf5", 8: "#8b93a7",
+}
+
+
+class MinesweeperWindow(tk.Toplevel):
+    N = 9
+    MINES = 10
+    CELL = 40
+
+    def __init__(self, app=None):
+        super().__init__(app)
+        self.title("Minesweeper")
+        self.configure(bg=BG)
+        self.resizable(False, False)
+        self.wins = _load_scores().get("minesweeper_wins", 0)
+        self._reset()
+
+        _header(self, self, "Minesweeper", "left-click to clear, right-click to flag")
+        self.lbl = tk.Label(self, text="", font=("Segoe UI", 10, "bold"), bg=BG, fg=TEXT)
+        self.lbl.pack()
+        self.cv = tk.Canvas(self, width=self.N * self.CELL, height=self.N * self.CELL,
+                            bg="#0d1019", highlightthickness=0)
+        self.cv.pack(padx=16, pady=8)
+        self.cv.bind("<Button-1>", self._left_click)
+        self.cv.bind("<Button-3>", self._right_click)
+        row = tk.Frame(self, bg=BG)
+        row.pack(pady=(0, 12))
+        _btn2(row, "New game", self._new_game).pack()
+        self._draw()
+        self._update_lbl()
+
+    def _reset(self):
+        n2 = self.N * self.N
+        self.mine = [False] * n2
+        self.adjacent = [0] * n2
+        self.revealed = [False] * n2
+        self.flagged = [False] * n2
+        self.started = False
+        self.game_over = False
+        self.won = False
+
+    def _new_game(self):
+        self._reset()
+        self._draw()
+        self._update_lbl()
+
+    def _neighbors(self, i):
+        r, col = divmod(i, self.N)
+        for dr in (-1, 0, 1):
+            for dc in (-1, 0, 1):
+                if dr == 0 and dc == 0:
+                    continue
+                nr, nc = r + dr, col + dc
+                if 0 <= nr < self.N and 0 <= nc < self.N:
+                    yield nr * self.N + nc
+
+    def _place_mines(self, safe_i):
+        # Mines are placed on the first click, never on the clicked cell
+        # itself, so the player is never blown up before they've done
+        # anything - classic Minesweeper behavior.
+        pool = [i for i in range(self.N * self.N) if i != safe_i]
+        for i in random.sample(pool, self.MINES):
+            self.mine[i] = True
+        for i in range(self.N * self.N):
+            if not self.mine[i]:
+                self.adjacent[i] = sum(1 for n in self._neighbors(i) if self.mine[n])
+        self.started = True
+
+    def _flood_reveal(self, start):
+        stack = [start]
+        while stack:
+            i = stack.pop()
+            if self.revealed[i] or self.flagged[i]:
+                continue
+            self.revealed[i] = True
+            if self.adjacent[i] == 0:
+                for n in self._neighbors(i):
+                    if not self.revealed[n] and not self.mine[n]:
+                        stack.append(n)
+
+    def _cell_at(self, event):
+        col = event.x // self.CELL
+        r = event.y // self.CELL
+        if col >= self.N or r >= self.N:
+            return None
+        return r * self.N + col
+
+    def _left_click(self, event):
+        if self.game_over:
+            return
+        i = self._cell_at(event)
+        if i is None or self.flagged[i] or self.revealed[i]:
+            return
+        if not self.started:
+            self._place_mines(i)
+        if self.mine[i]:
+            self.revealed[i] = True
+            self.game_over = True
+            self._draw()
+            self.lbl.config(text="Boom! You hit a mine.", fg=RED)
+            return
+        self._flood_reveal(i)
+        if sum(1 for j in range(self.N * self.N) if not self.mine[j] and not self.revealed[j]) == 0:
+            self.game_over = True
+            self.won = True
+            self.wins += 1
+            data = _load_scores()
+            data["minesweeper_wins"] = self.wins
+            _save_scores(data)
+            self.lbl.config(text=f"Cleared it! Wins: {self.wins}", fg=GREEN)
+            self._draw()
+            return
+        self._draw()
+        self._update_lbl()
+
+    def _right_click(self, event):
+        if self.game_over:
+            return
+        i = self._cell_at(event)
+        if i is None or self.revealed[i]:
+            return
+        self.flagged[i] = not self.flagged[i]
+        self._draw()
+        self._update_lbl()
+
+    def _update_lbl(self):
+        if self.game_over:
+            return
+        flags = sum(self.flagged)
+        self.lbl.config(text=f"Mines {self.MINES}   Flags {flags}   Wins {self.wins}", fg=TEXT)
+
+    def _draw(self):
+        c = self.cv
+        c.delete("all")
+        pad = 2
+        for i in range(self.N * self.N):
+            r, col = divmod(i, self.N)
+            x = col * self.CELL
+            y = r * self.CELL
+            revealed = self.revealed[i]
+            show_mine = self.game_over and self.mine[i]
+            if revealed or show_mine:
+                fill = "#3a1a1a" if (self.game_over and self.mine[i] and revealed) else CARD2
+                c.create_rectangle(x + pad, y + pad, x + self.CELL - pad, y + self.CELL - pad,
+                                   fill=fill, outline="")
+                if self.mine[i]:
+                    c.create_text(x + self.CELL / 2, y + self.CELL / 2, text="\U0001f4a3",
+                                  font=tkfont.Font(family="Segoe UI Emoji", size=16))
+                elif self.adjacent[i] > 0:
+                    n = self.adjacent[i]
+                    c.create_text(x + self.CELL / 2, y + self.CELL / 2, text=str(n),
+                                  fill=MINE_NUM_COLORS.get(n, TEXT),
+                                  font=tkfont.Font(family="Segoe UI", size=14, weight="bold"))
+            else:
+                c.create_rectangle(x + pad, y + pad, x + self.CELL - pad, y + self.CELL - pad,
+                                   fill=ACC, outline="")
+                if self.flagged[i]:
+                    c.create_text(x + self.CELL / 2, y + self.CELL / 2, text="\U0001f6a9",
+                                  font=tkfont.Font(family="Segoe UI Emoji", size=14))
 
