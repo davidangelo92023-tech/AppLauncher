@@ -748,8 +748,22 @@ class AppLauncher(tk.Tk):
     def _save_config(self):
         try:
             os.makedirs(CONFIG_DIR, exist_ok=True)
+            # Merge onto whatever's currently on disk instead of overwriting
+            # the file wholesale. AppContacts/AppNet share this same file to
+            # store the signed-in session (net_token, net_url, etc.) - a
+            # blind dump of self.config here doesn't know about those keys
+            # and would silently erase the saved login every time settings
+            # save, signing the user out the next time they reopen the app.
+            try:
+                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                    on_disk = json.load(f)
+                if not isinstance(on_disk, dict):
+                    on_disk = {}
+            except Exception:
+                on_disk = {}
+            on_disk.update(self.config)
             with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-                json.dump(self.config, f, indent=2)
+                json.dump(on_disk, f, indent=2)
         except Exception:
             pass
 
