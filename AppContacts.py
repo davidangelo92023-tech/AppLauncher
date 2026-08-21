@@ -70,9 +70,88 @@ def _load_config():
         return {}
 
 
+# The one account allowed to hold Owner powers (Kick/Ban/etc), regardless
+# of what any server-reported or locally-cached "is_owner" flag says. This
+# is a hard-coded safety net on top of the normal server-side check, so a
+# stale cache or a mix-up while switching accounts can never hand admin
+# powers to the wrong account.
+OWNER_USERNAME = "ash"
+
+
+def _is_owner_username(name):
+    return (name or "").strip().casefold() == OWNER_USERNAME
+
+
 def is_owner():
     cfg = _load_config()
     return bool(cfg.get("owner_secret")) and cfg.get("owner_machine") == machine_fingerprint()
+
+
+def net_is_owner(net):
+    """True only if net is actually signed in, the server says this account
+    is the Owner, AND the signed-in username is the one true Owner account."""
+    return bool(net and net.signed_in and net.me
+                and net.me.get("is_owner") and _is_owner_username(net.me.get("username")))
+
+
+def net_is_admin(net):
+    """True for the Owner or for any account holding a moderation role
+    (Trial Mod, Mod, Co-Owner) - server-verified. See net_rank for what
+    each tier can actually do."""
+    if net_is_owner(net):
+        return True
+    return bool(net and net.signed_in and net.me and net.me.get("is_admin"))
+
+
+# Role ladder mirrored from server/main.py - keep in sync. "owner" is never
+# stored anywhere; it's purely derived from the username check above.
+_ROLE_RANK = {"member": 0, "trial_mod": 1, "mod": 2, "co_owner": 3, "owner": 4}
+
+
+def net_role(net):
+    """The signed-in account's role, server-verified where possible. Falls
+    back to "member" for anyone signed out or without a recognized role."""
+    if net_is_owner(net):
+        return "owner"
+    if net and net.signed_in and net.me:
+        r = net.me.get("role")
+        if r in _ROLE_RANK:
+            return r
+    return "member"
+
+
+def net_rank(net):
+    return _ROLE_RANK.get(net_role(net), 0)
+
+
+def net_can_kick(net):
+    """Trial Mod and up."""
+    return net_rank(net) >= 1
+
+
+def net_can_ban(net):
+    """Mod and up."""
+    return net_rank(net) >= 2
+
+
+def net_can_manage_bans(net):
+    """Co-Owner and up - full ban-list visibility/management."""
+    return net_rank(net) >= 3
+
+
+def is_verified_owner():
+    """Single source of truth for whether Owner-only UI (the footer's Owner
+    tag, admin buttons, etc) should show, usable even without a live Net
+    object - reads whatever session is saved locally. Prefers the network
+    account's server-verified status; falls back to the local per-PC claim
+    only when signed out."""
+    try:
+        session = AppNet.load_session()
+    except Exception:
+        session = None
+    if session:
+        return bool(session.get("is_owner")) and _is_owner_username(session.get("username"))
+    return is_owner() and _is_owner_username(my_username())
 
 
 def claim_owner():
@@ -174,7 +253,31 @@ class ContactsWindow(tk.Toplevel):
         self._load_session()
         self.refresh_list()
 
+    def _net_async(self, fn, on_done):
+        """Run a blocking AppNet call on a background thread so it never
+        freezes the UI, then deliver (result, error) back via on_done on
+        the Tk main thread."""
+        def worker():
+            result, err = None, None
+            try:
+                result = fn()
+            except AppNet.NetError as e:
+                err = e
+            except Exception as e:
+                err = AppNet.NetError(str(e))
+
+            def deliver():
+                if not self.winfo_exists():
+                    return
+                on_done(result, err)
+            try:
+                self.after(0, deliver)
+            except Exception:
+                pass
+        threading.Thread(target=worker, daemon=True).start()
+
     def _load_session(self):
+        self.contacts = load_contacts()  # show cached contacts immediately, no network wait
         try:
             session = AppNet.load_session()
             if session:
@@ -183,27 +286,67 @@ class ContactsWindow(tk.Toplevel):
                     "id": session["id"],
                     "username": session["username"],
                     "is_owner": session["is_owner"],
+                    "is_admin": session.get("is_admin"),
+                    "role": session.get("role"),
                 }
-                self._apply_net_friends()
+            else:
+                self.net = None
         except Exception:
             self.net = None
         self._update_net_ui()
         self._start_notices()
+        if self.net_active:
+            self._apply_net_friends()
 
     @property
     def net_active(self):
         return bool(self.net and self.net.signed_in)
 
+    def _handle_stale_session(self, err):
+        """Common handling for a token the server no longer accepts - either
+        it genuinely expired (401) or the server force-revoked it because
+        this copy of the app is too old to keep signing in (426, from the
+        minimum-version check). Clears the local session and tells the user
+        why. Returns True if it handled the error (caller should stop),
+        False if err is something else (offline, etc.) that the caller
+        should keep handling itself."""
+        if err is None or err.status not in (401, 426):
+            return False
+        self.net = None
+        AppNet.clear_session()
+        self._update_net_ui()
+        if err.status == 426:
+            messagebox.showwarning("Update required", err.message, parent=self)
+        else:
+            messagebox.showwarning("Signed out", "Your session expired. Please sign in again.",
+                                   parent=self)
+        return True
+
     def _apply_net_friends(self):
-        try:
-            friends = self.net.friends()
-            self.contacts = [{"name": f["username"], "id": f["id"], "banned": f.get("banned")}
-                             for f in friends]
-            save_contacts(self.contacts)
-        except AppNet.NetError as e:
-            messagebox.showwarning("Offline", e.message, parent=self)
-            self.net = None
-            self.contacts = load_contacts()
+        net = self.net
+        if not net:
+            return
+
+        def done(friends, err):
+            if self.net is not net:
+                return  # signed out / switched accounts while this was in flight
+            if self._handle_stale_session(err):
+                self.contacts = load_contacts()
+                self.refresh_list()
+                return
+            if err is not None:
+                # server unreachable / timed out / hiccup - stay signed in, just show
+                # cached contacts until the connection recovers
+                messagebox.showwarning("Offline", err.message, parent=self)
+                self.contacts = load_contacts()
+            else:
+                self.contacts = [{"name": f["username"], "id": f["id"], "banned": f.get("banned"),
+                                  "is_admin": f.get("is_admin", False), "role": f.get("role", "member")}
+                                 for f in friends]
+                save_contacts(self.contacts)
+            self.refresh_list()
+
+        self._net_async(net.friends, done)
 
     def _update_net_ui(self):
         try:
@@ -213,19 +356,22 @@ class ContactsWindow(tk.Toplevel):
             else:
                 self.sign_btn.config(text="Sign in", bg=ACC, fg="#ffffff")
             self.add_btn.config(text="+ Add" if not self.net_active else "+ Add (by username)")
-            for w, cmd in self._admin_buttons:
-                if self.net_active:
-                    w.pack_forget()
-                    if self.net.me.get("is_owner"):
-                        w.pack(**cmd)
-                else:
-                    w.pack_forget()
-                    if is_owner():
-                        w.pack(**cmd)
-            if self.net_active:
+            for w, cmd in self._kick_buttons:
+                w.pack_forget()
+                if self._kick_ok():
+                    w.pack(**cmd)
+            for w, cmd in self._owner_buttons:
+                w.pack_forget()
+                if self._ban_ok():
+                    w.pack(**cmd)
+            if self.net_active and net_can_manage_bans(self.net):
                 self.bans_btn.pack(side="right", padx=(0, 8))
             else:
                 self.bans_btn.pack_forget()
+            if self.net_active and net_is_owner(self.net):
+                self.special_btn.pack(side="right", padx=(0, 8))
+            else:
+                self.special_btn.pack_forget()
         except Exception:
             pass
 
@@ -240,13 +386,20 @@ class ContactsWindow(tk.Toplevel):
     def _poll_notices(self):
         if not self.net_active:
             return
-        try:
-            for n in self.net.notices():
-                text = n.get("text", "")
-                self.after(0, self._handle_notice, text)
-        except AppNet.NetError:
-            pass
-        self._notices_job = self.after(4000, self._poll_notices)
+        net = self.net
+
+        def done(notices, err):
+            if not self.net_active or self.net is not net:
+                return
+            if self._handle_stale_session(err):
+                self.refresh_list()
+                return  # signed out - stop polling until they sign in again
+            if err is None and notices:
+                for n in notices:
+                    self.after(0, self._handle_notice, n.get("text", ""))
+            self._notices_job = self.after(4000, self._poll_notices)
+
+        self._net_async(net.notices, done)
 
     def _handle_notice(self, text):
         low = text.lower()
@@ -269,14 +422,9 @@ class ContactsWindow(tk.Toplevel):
 
     def refresh_net(self):
         if self.net_active:
-            try:
-                friends = self.net.friends()
-                self.contacts = [{"name": f["username"], "id": f["id"], "banned": f.get("banned")}
-                                 for f in friends]
-                save_contacts(self.contacts)
-            except AppNet.NetError as e:
-                messagebox.showwarning("Offline", e.message, parent=self)
-        self.refresh_list()
+            self._apply_net_friends()
+        else:
+            self.refresh_list()
 
     def _after_login(self):
         self._load_session()
@@ -305,6 +453,10 @@ class ContactsWindow(tk.Toplevel):
         self.bans_btn = tk.Button(bar, text="Bans\u2026", command=self.manage_bans, bg=CARD2, fg="#ffd166",
                                   activebackground=CARD2, activeforeground="#ffd166", relief="flat", bd=0,
                                   padx=10, pady=5, font=("Segoe UI", 9, "bold"), cursor="hand2")
+        self.special_btn = tk.Button(bar, text="\u2b50 Special Menu\u2026", command=self.open_special_menu,
+                                     bg=CARD2, fg=ACC, activebackground=CARD2, activeforeground=ACC,
+                                     relief="flat", bd=0, padx=10, pady=5,
+                                     font=("Segoe UI", 9, "bold"), cursor="hand2")
         self.sign_btn = tk.Button(bar, text="Sign in", command=self.toggle_sign_in, bg=ACC, fg="#ffffff",
                                   activebackground=ACC, activeforeground="#ffffff", relief="flat", bd=0,
                                   padx=10, pady=5, font=("Segoe UI", 9, "bold"), cursor="hand2")
@@ -354,11 +506,16 @@ class ContactsWindow(tk.Toplevel):
         b("Message", self.message, ACC, "#ffffff", True).pack(side="left", padx=(0, 6))
         b("Call", self.call).pack(side="left", padx=(0, 6))
         b("Edit", self.edit_contact).pack(side="left", padx=(0, 6))
-        self._admin_buttons = []
         kick_btn = b("Kick", self.kick_contact, RED, "#ffffff")
         ban_btn = b("Ban", self.ban_contact, "#b3001b", "#ffffff")
-        self._admin_buttons = [
+        # Kick is Trial Mod and up; Ban is Mod and up (mirrors the server's
+        # kick_guard vs ban_guard split). Role management (Trial Mod / Mod /
+        # Co-Owner) lives in the Owner-only Special Menu instead of a quick
+        # button here, since it's no longer a simple on/off toggle.
+        self._kick_buttons = [
             (kick_btn, {"side": "right", "padx": (6, 0)}),
+        ]
+        self._owner_buttons = [
             (ban_btn, {"side": "right", "padx": (6, 0)}),
         ]
         self._update_net_ui()
@@ -537,16 +694,35 @@ class ContactsWindow(tk.Toplevel):
                   font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="left", padx=4)
         e_name.focus_set()
 
-    def _admin_ok(self):
+    def _owner_ok(self):
+        """Strictly Owner-only actions, like deleting a contact outright."""
         if self.net_active:
-            return bool(self.net.me.get("is_owner"))
-        return is_owner()
+            return net_is_owner(self.net)
+        return is_owner() and _is_owner_username(my_username())
+
+    def _kick_ok(self):
+        """Kick is available to Trial Mod and up."""
+        if self.net_active:
+            return net_can_kick(self.net)
+        return is_owner() and _is_owner_username(my_username())
+
+    def _ban_ok(self):
+        """Ban is available to Mod and up."""
+        if self.net_active:
+            return net_can_ban(self.net)
+        return is_owner() and _is_owner_username(my_username())
+
+    def _banlist_ok(self):
+        """Full ban-list visibility is Co-Owner and up."""
+        if self.net_active:
+            return net_can_manage_bans(self.net)
+        return is_owner() and _is_owner_username(my_username())
 
     def delete_contact(self):
         c = self._selected()
         if not c:
             return
-        if not self._admin_ok():
+        if not self._owner_ok():
             return
         if not messagebox.askyesno("Delete contact", f"Remove {c['name']}?", parent=self):
             return
@@ -556,7 +732,7 @@ class ContactsWindow(tk.Toplevel):
         c = self._selected()
         if not c:
             return
-        if not self._admin_ok():
+        if not self._kick_ok():
             return
         if not messagebox.askyesno("Kick", f"Kick {c['name']} from your network?\n"
                                            f"They will be removed.", parent=self):
@@ -576,7 +752,7 @@ class ContactsWindow(tk.Toplevel):
         c = self._selected()
         if not c:
             return
-        if not self._admin_ok():
+        if not self._ban_ok():
             return
         if not messagebox.askyesno("Ban", f"Ban {c['name']}?\n\n"
                                           f"They will be removed and blocked from being added again.",
@@ -607,7 +783,7 @@ class ContactsWindow(tk.Toplevel):
         self.refresh_list()
 
     def manage_bans(self):
-        if not self._admin_ok():
+        if not self._banlist_ok():
             return
         win = tk.Toplevel(self)
         win.title("Banned people")
@@ -673,6 +849,331 @@ class ContactsWindow(tk.Toplevel):
                   padx=14, pady=6, font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="right", padx=(0, 8))
         refresh()
 
+    def open_special_menu(self):
+        # Double-guarded on top of the button only showing for the Owner in
+        # the first place - opening this window always re-checks, since the
+        # server is what actually enforces every action taken inside it.
+        if not (self.net_active and net_is_owner(self.net)):
+            messagebox.showwarning("Owner only", "You need to be signed in as the Owner to use this.",
+                                   parent=self)
+            return
+        SpecialMenuWindow(self, self.net, on_change=self._apply_net_friends)
+
+
+class SpecialMenuWindow(tk.Toplevel):
+    """Owner-only management panel: search for any account (including ones
+    you're not already friends with, and banned ones), then Kick, Ban/Unban,
+    or set their role (Trial Mod / Mod / Co-Owner / member). Everything here
+    is a thin UI over server endpoints that independently re-check the
+    caller is really the Owner - this window is convenience, not the actual
+    security boundary."""
+
+    ROLE_LABELS = {
+        "member": "Member",
+        "trial_mod": "Trial Mod",
+        "mod": "Mod",
+        "co_owner": "Co-Owner",
+    }
+    ROLE_PERKS = {
+        "member": "No special powers.",
+        "trial_mod": "Can Kick.",
+        "mod": "Can Kick and Ban.",
+        "co_owner": "Can Kick, Ban, and manage the ban list.",
+    }
+
+    def __init__(self, app, net, on_change=None):
+        super().__init__(app)
+        self.net = net
+        self.on_change = on_change
+        self.title("Special Menu")
+        self.configure(bg=BG)
+        self.geometry("460x600")
+        self.minsize(420, 480)
+        self.transient(app)
+        self.results = []
+        self._selected_row = None
+        self._build()
+
+    def _build(self):
+        header_row = tk.Frame(self, bg=BG)
+        header_row.pack(fill="x", padx=14, pady=(14, 0))
+        tk.Label(header_row, text="\u2b50 Special Menu", font=tkfont.Font(family="Segoe UI", size=15, weight="bold"),
+                 bg=BG, fg=TEXT).pack(side="left")
+        tk.Button(header_row, text="View Log", command=self.open_mod_log, bg=CARD2, fg=TEXT,
+                  activebackground="#343c58", activeforeground="#ffffff", relief="flat", bd=0,
+                  padx=10, pady=4, font=("Segoe UI", 8, "bold"), cursor="hand2").pack(side="right")
+        tk.Label(self, text="Find any account, then Kick, Ban, or set their role.",
+                 font=("Segoe UI", 8), bg=BG, fg=MUTED, anchor="w").pack(fill="x", padx=14, pady=(2, 8))
+
+        search_row = tk.Frame(self, bg=BG)
+        search_row.pack(fill="x", padx=14)
+        self.q_var = tk.StringVar()
+        entry = tk.Entry(search_row, textvariable=self.q_var, bg=CARD2, fg=TEXT, insertbackground=TEXT,
+                         relief="flat", bd=0, highlightthickness=0, font=("Segoe UI", 10))
+        entry.pack(side="left", fill="x", expand=True, ipady=6, padx=(0, 6))
+        entry.bind("<Return>", lambda e: self.search())
+        entry.focus_set()
+        tk.Button(search_row, text="Find", command=self.search, bg=ACC, fg="#ffffff",
+                  activebackground=ACC, activeforeground="#ffffff", relief="flat", bd=0,
+                  padx=12, pady=6, font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="right")
+
+        frame = tk.Frame(self, bg=BG)
+        frame.pack(fill="both", expand=True, padx=14, pady=(10, 6))
+        self.lb = tk.Listbox(frame, bg=CARD, fg=TEXT, selectbackground=ACC, selectforeground="#ffffff",
+                             relief="flat", bd=0, highlightthickness=0, font=("Segoe UI", 11),
+                             activestyle="none", cursor="hand2")
+        sb = tk.Scrollbar(frame, orient="vertical", command=self.lb.yview, bg=BG, troughcolor=BG,
+                          activebackground=MUTED)
+        self.lb.config(yscrollcommand=sb.set)
+        self.lb.pack(side="left", fill="both", expand=True)
+        sb.pack(side="right", fill="y")
+        self.lb.bind("<<ListboxSelect>>", self._on_select)
+
+        self.detail_lbl = tk.Label(self, text="Search for someone to see actions.",
+                                   font=("Segoe UI", 9), bg=BG, fg=MUTED, anchor="w", justify="left")
+        self.detail_lbl.pack(fill="x", padx=14, pady=(0, 6))
+
+        actions = tk.Frame(self, bg=BG)
+        actions.pack(fill="x", padx=14, pady=(0, 6))
+
+        def b(parent, text, cmd, color=CARD2, fg=TEXT):
+            return tk.Button(parent, text=text, command=cmd, bg=color, fg=fg,
+                             activebackground=color, activeforeground=fg, relief="flat", bd=0,
+                             padx=10, pady=6, font=("Segoe UI", 9, "bold"), cursor="hand2")
+
+        self.kick_btn = b(actions, "Kick", self.do_kick, RED, "#ffffff")
+        self.kick_btn.pack(side="left", padx=(0, 6))
+        self.ban_btn = b(actions, "Ban", self.do_ban, "#b3001b", "#ffffff")
+        self.ban_btn.pack(side="left", padx=(0, 6))
+        self.unban_btn = b(actions, "Unban", self.do_unban, GREEN, "#0d1220")
+        self.unban_btn.pack(side="left")
+
+        reason_row = tk.Frame(self, bg=BG)
+        reason_row.pack(fill="x", padx=14, pady=(6, 0))
+        tk.Label(reason_row, text="Reason (optional):", font=("Segoe UI", 9), bg=BG, fg=MUTED).pack(
+            side="left", padx=(0, 8))
+        self.reason_var = tk.StringVar()
+        reason_entry = tk.Entry(reason_row, textvariable=self.reason_var, bg=CARD2, fg=TEXT,
+                                insertbackground=TEXT, relief="flat", bd=0, highlightthickness=0,
+                                font=("Segoe UI", 9))
+        reason_entry.pack(side="left", fill="x", expand=True, ipady=4)
+        tk.Label(self, text="Included in the notice they get, and saved to the log below.",
+                 font=("Segoe UI", 7), bg=BG, fg=MUTED, anchor="w").pack(fill="x", padx=14, pady=(2, 0))
+
+        role_row = tk.Frame(self, bg=BG)
+        role_row.pack(fill="x", padx=14, pady=(6, 14))
+        tk.Label(role_row, text="Set role:", font=("Segoe UI", 9), bg=BG, fg=MUTED).pack(side="left", padx=(0, 8))
+        self.role_var = tk.StringVar(value="member")
+        opt = tk.OptionMenu(role_row, self.role_var, "member", "trial_mod", "mod", "co_owner")
+        opt.config(bg=CARD2, fg=TEXT, activebackground=CARD2, activeforeground=TEXT, relief="flat", bd=0,
+                  font=("Segoe UI", 9), highlightthickness=0, cursor="hand2")
+        opt["menu"].config(bg=CARD2, fg=TEXT)
+        opt.pack(side="left", padx=(0, 8))
+        b(role_row, "Apply", self.do_set_role, ACC, "#ffffff").pack(side="left")
+
+        self._set_actions_enabled(False)
+
+    def _set_actions_enabled(self, enabled):
+        state = "normal" if enabled else "disabled"
+        for w in (self.kick_btn, self.ban_btn, self.unban_btn):
+            w.config(state=state)
+
+    def search(self):
+        q = (self.q_var.get() or "").strip()
+        if not q:
+            return
+        try:
+            self.results = self.net.search_any(q)
+        except AppNet.NetError as e:
+            messagebox.showwarning("Search failed", e.message, parent=self)
+            return
+        self.lb.delete(0, "end")
+        self._selected_row = None
+        self._set_actions_enabled(False)
+        self.detail_lbl.config(text=f"{len(self.results)} result(s).")
+        for r in self.results:
+            tag = " [OWNER]" if r.get("is_owner") else (
+                f" [{self.ROLE_LABELS.get(r.get('role', 'member'), r.get('role'))}]"
+                if r.get("role", "member") != "member" else "")
+            banned = " (banned)" if r.get("banned") else ""
+            self.lb.insert("end", f"{r['username']}{tag}{banned}")
+
+    def _on_select(self, event=None):
+        sel = self.lb.curselection()
+        if not sel or sel[0] >= len(self.results):
+            self._selected_row = None
+            self._set_actions_enabled(False)
+            return
+        r = self.results[sel[0]]
+        self._selected_row = r
+        if r.get("is_owner"):
+            self.detail_lbl.config(text=f"{r['username']} is the Owner \u2014 no actions available.")
+            self._set_actions_enabled(False)
+            return
+        role = r.get("role", "member")
+        perk = self.ROLE_PERKS.get(role, "")
+        status = "banned" if r.get("banned") else "not banned"
+        self.detail_lbl.config(
+            text=f"{r['username']} \u2014 role: {self.ROLE_LABELS.get(role, role)} ({perk}) \u2014 {status}")
+        self.role_var.set(role)
+        self._set_actions_enabled(True)
+
+    def _selected_or_warn(self):
+        if not self._selected_row:
+            messagebox.showinfo("Pick someone", "Select a result from the list first.", parent=self)
+            return None
+        return self._selected_row
+
+    def _after_change(self, refreshed_username=None):
+        # Re-run the search so the list reflects the new state, and let the
+        # Contacts window refresh its own friend list (role/ban tags, etc.)
+        # in case the person acted on happens to be a friend.
+        if self._selected_row:
+            self.search()
+            if refreshed_username:
+                for i, r in enumerate(self.results):
+                    if r["username"] == refreshed_username:
+                        self.lb.selection_set(i)
+                        self._on_select()
+                        break
+        if self.on_change:
+            try:
+                self.on_change()
+            except Exception:
+                pass
+
+    def _reason(self):
+        return (self.reason_var.get() or "").strip() or None
+
+    def do_kick(self):
+        r = self._selected_or_warn()
+        if not r:
+            return
+        if not messagebox.askyesno("Kick", f"Kick {r['username']}?", parent=self):
+            return
+        try:
+            self.net.kick(r["id"], self._reason())
+        except AppNet.NetError as e:
+            messagebox.showwarning("Couldn't kick", e.message, parent=self)
+            return
+        self.reason_var.set("")
+        self._after_change(r["username"])
+
+    def do_ban(self):
+        r = self._selected_or_warn()
+        if not r:
+            return
+        if not messagebox.askyesno("Ban", f"Ban {r['username']}?", parent=self):
+            return
+        try:
+            self.net.ban(r["id"], self._reason())
+        except AppNet.NetError as e:
+            messagebox.showwarning("Couldn't ban", e.message, parent=self)
+            return
+        self.reason_var.set("")
+        self._after_change(r["username"])
+
+    def do_unban(self):
+        r = self._selected_or_warn()
+        if not r:
+            return
+        try:
+            self.net.unban(r["id"], self._reason())
+        except AppNet.NetError as e:
+            messagebox.showwarning("Couldn't unban", e.message, parent=self)
+            return
+        self.reason_var.set("")
+        self._after_change(r["username"])
+
+    def do_set_role(self):
+        r = self._selected_or_warn()
+        if not r:
+            return
+        role = self.role_var.get()
+        label = self.ROLE_LABELS.get(role, role)
+        if not messagebox.askyesno("Set role", f"Set {r['username']}'s role to {label}?", parent=self):
+            return
+        try:
+            self.net.set_role(r["id"], role, self._reason())
+        except AppNet.NetError as e:
+            messagebox.showwarning("Couldn't set role", e.message, parent=self)
+            return
+        self.reason_var.set("")
+        self._after_change(r["username"])
+
+    def open_mod_log(self):
+        try:
+            entries = self.net.mod_log()
+        except AppNet.NetError as e:
+            messagebox.showwarning("Couldn't load log", e.message, parent=self)
+            return
+        ModLogWindow(self, entries)
+
+
+class ModLogWindow(tk.Toplevel):
+    """Read-only view of the moderation history (kicks/bans/unbans/role
+    changes) returned by /api/owner/modlog - most recent first."""
+
+    ACTION_LABELS = {
+        "kick": "Kicked",
+        "ban": "Banned",
+        "unban": "Unbanned",
+    }
+
+    def __init__(self, app, entries):
+        super().__init__(app)
+        self.title("Moderation log")
+        self.configure(bg=BG)
+        self.geometry("480x420")
+        self.minsize(400, 300)
+        self.transient(app)
+
+        tk.Label(self, text="Moderation log", font=tkfont.Font(family="Segoe UI", size=14, weight="bold"),
+                 bg=BG, fg=TEXT).pack(anchor="w", padx=14, pady=(14, 2))
+        tk.Label(self, text="Most recent 200 actions, newest first.",
+                 font=("Segoe UI", 8), bg=BG, fg=MUTED, anchor="w").pack(fill="x", padx=14, pady=(0, 8))
+
+        frame = tk.Frame(self, bg=BG)
+        frame.pack(fill="both", expand=True, padx=14, pady=(0, 10))
+        txt = tk.Text(frame, bg=CARD, fg=TEXT, relief="flat", bd=0, highlightthickness=0,
+                      font=("Segoe UI", 9), wrap="word", state="normal", cursor="arrow")
+        sb = tk.Scrollbar(frame, orient="vertical", command=txt.yview, bg=BG, troughcolor=BG,
+                          activebackground=MUTED)
+        txt.config(yscrollcommand=sb.set)
+        txt.pack(side="left", fill="both", expand=True)
+        sb.pack(side="right", fill="y")
+        txt.tag_config("who", foreground=ACC, font=("Segoe UI", 9, "bold"))
+        txt.tag_config("time", foreground=MUTED, font=("Segoe UI", 8))
+        txt.tag_config("reason", foreground="#ffd166")
+
+        if not entries:
+            txt.insert("end", "No moderation actions logged yet.")
+        for e in entries:
+            action = e.get("action", "")
+            if action.startswith("role:"):
+                role = action.split(":", 1)[1]
+                label = f"Set role to {role.replace('_', '-').title()}"
+            else:
+                label = self.ACTION_LABELS.get(action, action)
+            ts = e.get("ts") or 0
+            try:
+                when = datetime.datetime.fromtimestamp(ts).strftime("%b %d, %I:%M %p")
+            except Exception:
+                when = ""
+            txt.insert("end", e.get("actor", "?"), "who")
+            txt.insert("end", f" {label.lower()} ")
+            txt.insert("end", e.get("target", "?"), "who")
+            if when:
+                txt.insert("end", f"  \u00b7  {when}", "time")
+            if e.get("reason"):
+                txt.insert("end", f"\n    Reason: {e['reason']}", "reason")
+            txt.insert("end", "\n\n")
+        txt.config(state="disabled")
+
+        tk.Button(self, text="Close", command=self.destroy, bg=CARD2, fg=TEXT,
+                  activebackground="#343c58", activeforeground="#ffffff", relief="flat", bd=0,
+                  padx=14, pady=6, font=("Segoe UI", 9), cursor="hand2").pack(pady=(0, 14))
+
 
 class ChatWindow(tk.Toplevel):
     def __init__(self, app, contact, start_call=False, net=None):
@@ -693,7 +1194,8 @@ class ChatWindow(tk.Toplevel):
         self._poll_thread = None
         self._last_ts = 0.0
         self.me = my_username() or "You"
-        self.me_display = self.me + (" \u2b50" if (self.net and self.net.me.get("is_owner")) or is_owner() else "")
+        self.me_display = self.me + (" \u2b50" if net_is_owner(self.net) or
+                                     (is_owner() and _is_owner_username(my_username())) else "")
         if self.net:
             self.messages = []
             try:
@@ -720,10 +1222,15 @@ class ChatWindow(tk.Toplevel):
             self._poll_thread.join(timeout=1.0)
         self.destroy()
 
-    def _admin_ok(self):
+    def _ban_ok(self):
         if self.net:
-            return bool(self.net.me.get("is_owner"))
-        return is_owner()
+            return net_can_ban(self.net)
+        return is_owner() and _is_owner_username(my_username())
+
+    def _kick_ok(self):
+        if self.net:
+            return net_can_kick(self.net)
+        return is_owner() and _is_owner_username(my_username())
 
     def _build(self):
         head = tk.Frame(self, bg=CARD)
@@ -743,10 +1250,11 @@ class ChatWindow(tk.Toplevel):
                                   activebackground=GREEN, activeforeground="#0d1220", relief="flat", bd=0,
                                   padx=12, pady=6, font=("Segoe UI", 9, "bold"), cursor="hand2")
         self.call_btn.pack(side="right")
-        if self._admin_ok():
+        if self._kick_ok():
             tk.Button(pad, text="Kick", command=lambda: self._admin(True), bg=RED, fg="#ffffff",
                       activebackground=RED, activeforeground="#ffffff", relief="flat", bd=0,
                       padx=10, pady=6, font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="right", padx=(0, 6))
+        if self._ban_ok():
             tk.Button(pad, text="Ban", command=lambda: self._admin(False), bg="#b3001b", fg="#ffffff",
                       activebackground="#b3001b", activeforeground="#ffffff", relief="flat", bd=0,
                       padx=10, pady=6, font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="right", padx=(0, 6))
@@ -782,7 +1290,7 @@ class ChatWindow(tk.Toplevel):
         return datetime.datetime.now().strftime("%H:%M")
 
     def _admin(self, kick=True):
-        if not self._admin_ok():
+        if not (self._kick_ok() if kick else self._ban_ok()):
             return
         name = self.contact["name"]
         action = "Kick" if kick else "Ban"
@@ -1063,30 +1571,57 @@ class LoginWindow(tk.Toplevel):
 
         row = tk.Frame(self, bg=BG)
         row.pack(pady=(4, 16))
-        tk.Button(row, text="Sign in", command=self._login, bg=ACC, fg="#ffffff",
+        self.signin_btn = tk.Button(row, text="Sign in", command=self._login, bg=ACC, fg="#ffffff",
                   activebackground=ACC, activeforeground="#ffffff", relief="flat", bd=0,
-                  padx=18, pady=7, font=("Segoe UI", 10, "bold"), cursor="hand2").pack(side="left", padx=6)
-        tk.Button(row, text="Create account", command=self._create_account, bg=CARD2, fg=TEXT,
+                  padx=18, pady=7, font=("Segoe UI", 10, "bold"), cursor="hand2")
+        self.signin_btn.pack(side="left", padx=6)
+        self.create_btn = tk.Button(row, text="Create account", command=self._create_account, bg=CARD2, fg=TEXT,
                   activebackground="#343c58", activeforeground="#ffffff", relief="flat", bd=0,
-                  padx=14, pady=7, font=("Segoe UI", 10), cursor="hand2").pack(side="left", padx=6)
+                  padx=14, pady=7, font=("Segoe UI", 10), cursor="hand2")
+        self.create_btn.pack(side="left", padx=6)
         self.pass_var.trace_add("write", lambda *_: self.hint.config(text=""))
 
+    def _set_busy(self, busy):
+        state = "disabled" if busy else "normal"
+        self.signin_btn.config(state=state)
+        self.create_btn.config(state=state)
+
     def _do(self, fn):
-        self.hint.config(text="")
+        self.hint.config(fg=RED, text="")
         url = self.url_var.get().strip().rstrip("/")
         if not url or url in ("https://", "http://"):
             self.hint.config(text="Enter the server URL first.")
             return
         net = AppNet.Net(url)
-        try:
-            me = fn(net)
-        except AppNet.NetError as e:
-            self.hint.config(text=e.message)
-            return
-        AppNet.save_session(url, net.token, me)
-        if self._on_ready:
-            self._on_ready()
-        self.destroy()
+        self.hint.config(fg=MUTED,
+                         text="Signing in… free servers can take up to a minute "
+                              "to wake up if nobody's used them in a while.")
+        self._set_busy(True)
+
+        def work():
+            try:
+                me = fn(net)
+                err = None
+            except AppNet.NetError as e:
+                me, err = None, e
+            except Exception as e:
+                me, err = None, AppNet.NetError(str(e))
+            self.after(0, done, me, err)
+
+        def done(me, err):
+            if not self.winfo_exists():
+                return
+            self._set_busy(False)
+            if err is not None:
+                self.hint.config(fg=RED, text=err.message)
+                return
+            self.hint.config(fg=RED, text="")
+            AppNet.save_session(url, net.token, me)
+            if self._on_ready:
+                self._on_ready()
+            self.destroy()
+
+        threading.Thread(target=work, daemon=True).start()
 
     def _login(self):
         self._do(lambda n: n.login(self.user_var.get().strip(), self.pass_var.get()))

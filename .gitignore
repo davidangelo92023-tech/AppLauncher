@@ -5,4 +5,10 @@ contacts.json
 chats.json
 banned.json
 server/applauncher.db
+error.log
 
+# Personal folders that ended up living inside this project folder -
+# not part of App Launcher, never meant to be tracked here.
+Music/
+PCNotif/
+Ash Tag/

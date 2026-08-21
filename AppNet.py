@@ -7,7 +7,14 @@ import urllib.request
 DATA_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "AppLauncher")
 CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 
-SESSION_KEYS = ("net_url", "net_token", "net_id", "net_username", "net_owner")
+# Single source of truth for the app's version, sent with every
+# register/login so the server can refuse to sign in copies old enough to
+# predate a security fix. Bump this together with the root VERSION file and
+# server/main.py's MIN_CLIENT_VERSION whenever you push a fix that must not
+# keep running on older clients.
+CLIENT_VERSION = "1.4.1"
+
+SESSION_KEYS = ("net_url", "net_token", "net_id", "net_username", "net_owner", "net_admin", "net_role")
 
 
 class NetError(Exception):
@@ -42,6 +49,8 @@ def save_session(base_url, token, me):
     cfg["net_id"] = me.get("id", "")
     cfg["net_username"] = me.get("username", "")
     cfg["net_owner"] = bool(me.get("is_owner"))
+    cfg["net_admin"] = bool(me.get("is_admin"))
+    cfg["net_role"] = me.get("role") or ("owner" if me.get("is_owner") else "member")
     _save_config(cfg)
 
 
@@ -55,6 +64,8 @@ def load_session():
         "id": cfg.get("net_id", ""),
         "username": cfg.get("net_username", ""),
         "is_owner": bool(cfg.get("net_owner")),
+        "is_admin": bool(cfg.get("net_admin")),
+        "role": cfg.get("net_role") or "member",
     }
 
 
@@ -80,6 +91,7 @@ class Net:
             raise NetError("No server set.")
         url = self.base + path
         r = urllib.request.Request(url, method=method)
+        r.add_header("X-Client-Version", CLIENT_VERSION)
         if self.token:
             r.add_header("Authorization", "Bearer " + self.token)
         body = None
@@ -97,21 +109,39 @@ class Net:
             except Exception:
                 detail = str(e)
             raise NetError(str(detail), e.code)
+        except TimeoutError:
+            raise NetError(
+                "The server took too long to respond - free servers can take "
+                "up to a minute to wake up after sitting idle. Try again.", None)
         except urllib.error.URLError as e:
+            if isinstance(e.reason, TimeoutError):
+                raise NetError(
+                    "The server took too long to respond - free servers can take "
+                    "up to a minute to wake up after sitting idle. Try again.", None)
             raise NetError("Can't reach the server. Is it online?", None)
         except Exception as e:
             raise NetError(str(e), None)
 
     def register(self, username, password):
-        d = self._req("POST", "/api/register", {"username": username, "password": password})
+        # Free-tier servers spin down after 15 min idle and can take up to
+        # a minute to wake back up on the first request - give this one a
+        # much longer timeout than the routine calls below.
+        # Client version rides on the X-Client-Version header (added to every
+        # request in _req), so the server can gate this the same way it
+        # gates every other call - no need to duplicate it in the body.
+        d = self._req("POST", "/api/register", {"username": username, "password": password}, timeout=60)
         self.token = d.get("token")
-        self.me = {"id": d.get("id"), "username": d.get("username"), "is_owner": d.get("is_owner")}
+        self.me = {"id": d.get("id"), "username": d.get("username"),
+                  "is_owner": d.get("is_owner"), "is_admin": d.get("is_admin"),
+                  "role": d.get("role")}
         return self.me
 
     def login(self, username, password):
-        d = self._req("POST", "/api/login", {"username": username, "password": password})
+        d = self._req("POST", "/api/login", {"username": username, "password": password}, timeout=60)
         self.token = d.get("token")
-        self.me = {"id": d.get("id"), "username": d.get("username"), "is_owner": d.get("is_owner")}
+        self.me = {"id": d.get("id"), "username": d.get("username"),
+                  "is_owner": d.get("is_owner"), "is_admin": d.get("is_admin"),
+                  "role": d.get("role")}
         return self.me
 
     def logout(self):
@@ -135,17 +165,30 @@ class Net:
     def add_friend(self, username):
         return self._req("POST", "/api/friends/add", {"username": username})
 
-    def kick(self, user_id):
-        return self._req("POST", "/api/friends/kick", {"id": user_id})
+    def kick(self, user_id, reason=None):
+        return self._req("POST", "/api/friends/kick", {"id": user_id, "reason": reason})
 
-    def ban(self, user_id):
-        return self._req("POST", "/api/ban", {"id": user_id})
+    def ban(self, user_id, reason=None):
+        return self._req("POST", "/api/ban", {"id": user_id, "reason": reason})
 
-    def unban(self, user_id):
-        return self._req("POST", "/api/unban", {"id": user_id})
+    def unban(self, user_id, reason=None):
+        return self._req("POST", "/api/unban", {"id": user_id, "reason": reason})
 
     def bans(self):
         return self._req("GET", "/api/bans")
+
+    def set_role(self, user_id, role, reason=None):
+        return self._req("POST", "/api/roles/set", {"id": user_id, "role": role, "reason": reason})
+
+    def search_any(self, q):
+        # Owner-only lookup across every account (including banned ones),
+        # unlike search_users() which only covers non-banned strangers.
+        return self._req("POST", "/api/owner/search", {"username": q})
+
+    def mod_log(self):
+        # Owner-only moderation history - who kicked/banned/set roles on
+        # whom, when, and why (if a reason was given).
+        return self._req("GET", "/api/owner/modlog")
 
     def messages(self, with_user, after=0.0):
         q = urllib.parse.urlencode({"with_user": with_user, "after": float(after)})
@@ -163,3 +206,9 @@ class Net:
 
     def notices(self):
         return self._req("GET", "/api/notices")
+
+    def get_settings(self):
+        return self._req("GET", "/api/settings", timeout=20)
+
+    def set_settings(self, data):
+        return self._req("POST", "/api/settings", {"data": data}, timeout=20)

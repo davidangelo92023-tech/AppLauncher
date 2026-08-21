@@ -5,6 +5,7 @@ import math
 import re
 import ast
 import shutil
+import stat
 import random
 import colorsys
 import struct
@@ -34,7 +35,19 @@ from AppGames import (GamesWindow, ChessWindow, TicTacToeWindow, Connect4Window,
 import AppContacts
 import AppNet
 
-APPS_DIR = r"C:\Users\taxvi\OneDrive\Desktop\apps"
+if getattr(sys, "frozen", False):
+    # Running as a PyInstaller .exe - __file__ points inside the temporary
+    # extraction folder, not the real install folder, so anchor on the exe
+    # itself instead. Otherwise every relative path (apps/, icon.ico, Music/)
+    # silently resolves to an empty temp dir and the app grid looks empty.
+    BASE_DIR = os.path.dirname(os.path.abspath(sys.executable))
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+APPS_DIR = os.path.join(BASE_DIR, "apps")
+try:
+    os.makedirs(APPS_DIR, exist_ok=True)
+except Exception:
+    pass
 
 CONFIG_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "AppLauncher")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
@@ -72,8 +85,10 @@ DEFAULT_CONFIG = {
     "aurora": False,
     "stats": True,
     "tray": False,
+    "autostart": False,
+    "clear_mode": False,
     "launch_sound": "Coin",
-    "radius": 18,
+    "radius": 20,
     "label_size": 9,
     "alpha": 1.0,
     "max_cols": 8,
@@ -104,6 +119,7 @@ DEFAULT_CONFIG = {
     "avatar": "",
     "owner_secret": "",
     "owner_machine": "",
+    "cloud_sync": False,
 }
 
 # ------- fixed palette (works with any accent) -------
@@ -120,12 +136,70 @@ ACCENTS = ["#6c8cff", "#a06cff", "#ff6cb2", "#4ade80",
            "#ffb454", "#38d2e6", "#ff6b6b", "#c084fc"]
 
 # ------- geometry -------
-CARD_W = 170
-H_GAP = 14
-V_GAP = 20
-MARGIN = 30
-HEADER_Y = 118
+CARD_W = 178
+H_GAP = 20
+V_GAP = 28
+MARGIN = 34
+HEADER_Y = 150
+
+FAVORITES_LABEL = "★ Favorites"
+
+# ------- update check -------
+# Bump VERSION and push a matching VERSION file to the repo's default branch
+# to make this fire for everyone running an older copy. Silently does
+# nothing if the file isn't there or can't be reached - never blocks startup.
+# AppNet.CLIENT_VERSION is the single source of truth (it's also what gets
+# sent to the server on login/register) - mirror it here so a stale copy of
+# this constant can never drift out of sync and quietly disable the update
+# notice.
+VERSION = AppNet.CLIENT_VERSION
+UPDATE_REPO_URL = "https://github.com/davidangelo92023-tech/AppLauncher"
+UPDATE_RAW_BASE = "https://raw.githubusercontent.com/davidangelo92023-tech/AppLauncher/main/"
+UPDATE_CHECK_URL = UPDATE_RAW_BASE + "VERSION"
+# The actual app files that get pulled down and overwritten in place when
+# someone clicks "Update available". Keep this in sync with what the zip
+# ships - apps/, config, and personal data are never touched.
+UPDATE_FILES = [
+    "AppLauncher.py", "AppContacts.py", "AppNet.py", "AppBrowser.py",
+    "AppFriends.py", "AppGames.py", "run.py", "VERSION",
+]
 FOOTER_H = 46
+
+
+_NO_WINDOW_FLAGS = 0x08000000  # CREATE_NO_WINDOW
+
+
+def _hidden_startupinfo():
+    si = subprocess.STARTUPINFO()
+    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    si.wShowWindow = 0  # SW_HIDE
+    return si
+
+
+def run_hidden(cmd, shell=False, **kwargs):
+    """subprocess.Popen wrapper that never flashes a console window.
+
+    Safe to use from pythonw.exe (no console) or python.exe alike -
+    replaces os.system()/shell=True calls that would otherwise pop a
+    visible cmd.exe window.
+    """
+    kwargs.setdefault("close_fds", True)
+    return subprocess.Popen(
+        cmd, shell=shell,
+        creationflags=_NO_WINDOW_FLAGS,
+        startupinfo=_hidden_startupinfo(),
+        **kwargs,
+    )
+
+
+def run_hidden_wait(cmd, shell=False, **kwargs):
+    """subprocess.run wrapper that never flashes a console window."""
+    return subprocess.run(
+        cmd, shell=shell,
+        creationflags=_NO_WINDOW_FLAGS,
+        startupinfo=_hidden_startupinfo(),
+        **kwargs,
+    )
 
 
 def _hex(c):
@@ -164,7 +238,7 @@ def create_shortcut(target, lnk_path):
           f"$s = $ws.CreateShortcut({q(lnk_path)})\n"
           f"$s.TargetPath = {q(target)}\n"
           "$s.Save()")
-    subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-STA",
+    run_hidden_wait(["powershell", "-NoProfile", "-NonInteractive", "-STA",
                     "-Command", ps], capture_output=True)
 
 
@@ -541,8 +615,24 @@ class AppLauncher(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("App Launcher")
+        try:
+            icon_path = os.path.join(BASE_DIR, "icon.ico")
+            if os.path.exists(icon_path):
+                self.iconbitmap(icon_path)
+        except Exception:
+            pass
         self.geometry("1020x680")
+        self.update_idletasks()
+        w = self.winfo_width()
+        h = self.winfo_height()
+        sx = self.winfo_screenwidth()
+        sy = self.winfo_screenheight()
+        x = (sx - w) // 2
+        y = (sy - h) // 2
+        self.geometry(f"+{x}+{y}")
         self.minsize(670, 420)
+        self.lift()
+        self.focus_force()
 
         self.font_title = tkfont.Font(family="Segoe UI", size=20, weight="bold")
         self.font_sub = tkfont.Font(family="Segoe UI", size=9)
@@ -552,16 +642,24 @@ class AppLauncher(tk.Tk):
 
         self.config = self._load_config()
         self.icon_size = self.config["icon_size"]
-        self.card_h = self.icon_size + 104
+        self.card_h = self.icon_size + 118
 
         self.items = []
         self.visible = []
         self._photos = []
         self._bg_photo = None
         self._icon_cache = {}
+        self._card_bg_cache = {}
+        self._pill_bg_cache = {}
+        self._logo_cache = {}
+        self._accent_bar_cache = {}
+        self._btn_specs = {}
+        self._search_focused = False
+        self._search_focus_ring = None
         self._offset = 0
         self._content_h = 0
         self._hover_idx = None
+        self._kbd_idx = None
         self._pressed_idx = None
         self._drag_mode = None
         self._drag_start_y = 0
@@ -594,11 +692,23 @@ class AppLauncher(tk.Tk):
         self._tray_action = None
         self._hotkey_job = None
         self._quitting = False
-        self._launches, self._order = self._load_stats()
+        self._contacts_unread = False
+        self._contacts_watch_since = 0.0
+        self._contacts_poll_job = None
+        self._update_version = None
+        self._updating = False
+        (self._launches, self._order, self._favorites, self._categories,
+         self._dock, self._schedules, self._app_colors, self._app_icons) = self._load_stats()
+        self._active_category = "All"
+        self._schedule_fired = {}
+        self._schedule_job = None
+        self._sync_job = None
+        self._syncing = False
         self._dragged = False
 
         self.configure(bg=_hex(self._bg_bottom()))
         self.attributes("-topmost", bool(self.config["on_top"]))
+        self._apply_clear_mode()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
         self._build_widgets()
@@ -609,6 +719,11 @@ class AppLauncher(tk.Tk):
         self._start_effects()
         self._start_stats()
         self._apply_tray()
+        self._apply_autostart()
+        self._start_contacts_watch()
+        self._start_update_check()
+        self._start_schedule_watch()
+        self._start_cloud_sync()
         self.after(30, self._fade_in)
 
     # ---------- config ----------
@@ -640,18 +755,94 @@ class AppLauncher(tk.Tk):
             with open(STATS_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
             if isinstance(data, dict):
-                return data.get("launches", {}), data.get("order", [])
+                return (data.get("launches", {}), data.get("order", []),
+                        set(data.get("favorites", [])), data.get("categories", {}),
+                        data.get("dock", []), data.get("schedules", {}),
+                        data.get("app_colors", {}), data.get("app_icons", {}))
         except Exception:
             pass
-        return {}, []
+        return {}, [], set(), {}, [], {}, {}, {}
 
     def _save_stats(self):
         try:
             os.makedirs(CONFIG_DIR, exist_ok=True)
             with open(STATS_FILE, "w", encoding="utf-8") as f:
-                json.dump({"launches": self._launches, "order": self._order}, f, indent=2)
+                json.dump({"launches": self._launches, "order": self._order,
+                          "favorites": sorted(self._favorites), "categories": self._categories,
+                          "dock": self._dock, "schedules": self._schedules,
+                          "app_colors": self._app_colors, "app_icons": self._app_icons},
+                         f, indent=2)
         except Exception:
             pass
+
+    # Config keys that identify *this PC* rather than being a look/feel
+    # preference - never sync or export/import these, or a pull on another
+    # machine would silently steal the Owner claim or move it to nowhere.
+    _NON_SYNCED_CONFIG_KEYS = ("owner_secret", "owner_machine")
+
+    def _stats_blob(self):
+        """Everything sync-worthy, bundled as one dict - used by both the
+        export-to-file and the cloud-sync features so they stay in sync with
+        each other and with what _save_stats persists locally."""
+        cfg = {k: v for k, v in self.config.items() if k not in self._NON_SYNCED_CONFIG_KEYS}
+        return {
+            "favorites": sorted(self._favorites), "categories": self._categories,
+            "dock": self._dock, "schedules": self._schedules,
+            "app_colors": self._app_colors, "config": cfg,
+        }
+
+    def _apply_stats_blob(self, blob):
+        if not isinstance(blob, dict):
+            return
+        self._favorites = set(blob.get("favorites", []))
+        self._categories = dict(blob.get("categories", {}))
+        self._dock = list(blob.get("dock", []))
+        self._schedules = dict(blob.get("schedules", {}))
+        self._app_colors = dict(blob.get("app_colors", {}))
+        incoming_cfg = blob.get("config")
+        if isinstance(incoming_cfg, dict):
+            for k, v in incoming_cfg.items():
+                if k not in self._NON_SYNCED_CONFIG_KEYS:
+                    self.config[k] = v
+            self._save_config()
+        self._save_stats()
+
+    def export_settings(self):
+        path = filedialog.asksaveasfilename(
+            title="Export settings", defaultextension=".json",
+            initialfile="AppLauncher-settings.json",
+            filetypes=[("JSON", "*.json"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(self._stats_blob(), f, indent=2)
+            self._flash_status("Settings exported")
+        except Exception as e:
+            messagebox.showerror("Export settings", str(e))
+
+    def import_settings(self):
+        path = filedialog.askopenfilename(
+            title="Import settings", filetypes=[("JSON", "*.json"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                blob = json.load(f)
+        except Exception as e:
+            messagebox.showerror("Import settings", str(e))
+            return
+        if not messagebox.askyesno("Import settings",
+                                   "This will replace your current favorites, categories, dock,\n"
+                                   "schedules and look/feel settings with what's in this file. Continue?"):
+            return
+        self._apply_stats_blob(blob)
+        self.refresh()
+        if hasattr(self, "cv") and self.cv.winfo_width() > 10:
+            self._draw_bg()
+        self._flash_status("Settings imported")
 
     def _record_launch(self, path):
         self._launches[path] = self._launches.get(path, 0) + 1
@@ -667,26 +858,49 @@ class AppLauncher(tk.Tk):
         self._save_config()
         self._apply_config()
 
+    TRANSPARENT_COLOR = "#010001"
+
     def _apply_config(self):
         self.icon_size = self.config["icon_size"]
-        self.card_h = self.icon_size + 104
+        self.card_h = self.icon_size + 118
         self.font_card.configure(size=self.config["label_size"])
         self.attributes("-topmost", bool(self.config["on_top"]))
         self.attributes("-alpha", float(self.config.get("alpha", 1.0)))
+        self._apply_clear_mode()
         self._apply_color_widgets()
-        self.configure(bg=_hex(self._bg_bottom()))
-        self.cv.configure(bg=_hex(self._bg_bottom()))
+        if not self.config.get("clear_mode", False):
+            self.configure(bg=_hex(self._bg_bottom()))
+            self.cv.configure(bg=_hex(self._bg_bottom()))
         self._draw_bg()
         self.refresh()
         self._start_auto()
         self._start_effects()
         self._start_stats()
         self._apply_tray()
+        self._apply_autostart()
+
+    def _apply_clear_mode(self):
+        try:
+            cm = self.config.get("clear_mode", False)
+            if cm:
+                tc = self.TRANSPARENT_COLOR
+                self.attributes("-transparentcolor", tc)
+                self.configure(bg=tc)
+                self.cv.configure(bg=tc)
+                self.search_entry.config(bg=SEARCH_FILL_HEX)
+                # toolbar buttons are canvas-drawn pills now, not widgets -
+                # nothing to reconfigure here, they redraw via _layout_header.
+            else:
+                self.attributes("-transparentcolor", "")
+                self.configure(bg=_hex(self._bg_bottom()))
+                self.cv.configure(bg=_hex(self._bg_bottom()))
+        except Exception:
+            pass
 
     def _apply_color_widgets(self):
         tc, mc = self._text_color(), self._muted_color()
-        for b in (self.refresh_btn, self.gear_btn, self.add_btn, self.sound_btn):
-            b.config(fg=tc)
+        # toolbar button labels are canvas text now, recolored on every
+        # _layout_header() call - nothing to configure here for them.
         self.search_entry.config(insertbackground=tc)
         if self._placeholder:
             self.search_entry.config(fg=mc)
@@ -732,6 +946,10 @@ class AppLauncher(tk.Tk):
     def _shadow(self):
         return self.config.get("shadow_color") or SHADOW_HEX
 
+    def _mix(self, c1, c2, t):
+        a, b = self._rgb(c1), self._rgb(c2)
+        return tuple(max(0, min(255, int(a[i] + (b[i] - a[i]) * t))) for i in range(3))
+
     def _particle_color(self):
         return self.config.get("particle_color")
 
@@ -762,99 +980,26 @@ class AppLauncher(tk.Tk):
         self.search_entry.bind("<FocusOut>", self._on_search_focus_out)
         self.search_entry.bind("<Escape>", lambda e: self._clear_search())
 
-        btn_font = tkfont.Font(family="Segoe UI", size=11)
-        self.refresh_btn = tk.Button(
-            self.cv, text="\u21bb  Refresh", command=self.refresh, font=self.font_sub,
-            bg=BUTTON_FILL_HEX, fg=TEXT_HEX, activebackground=BUTTON_HOVER_HEX,
-            activeforeground="#ffffff", relief="flat", bd=0, padx=14, pady=6, cursor="hand2",
-        )
-        self.refresh_btn.bind("<Enter>", lambda e: self._set_btn_hover("refresh", True))
-        self.refresh_btn.bind("<Leave>", lambda e: self._set_btn_hover("refresh", False))
-
-        self.gear_btn = tk.Button(
-            self.cv, text="\u2699", command=self.open_settings, font=btn_font,
-            bg=BUTTON_FILL_HEX, fg=TEXT_HEX, activebackground=BUTTON_HOVER_HEX,
-            activeforeground="#ffffff", relief="flat", bd=0, width=3, pady=4, cursor="hand2",
-        )
-        self.gear_btn.bind("<Enter>", lambda e: self._set_btn_hover("gear", True))
-        self.gear_btn.bind("<Leave>", lambda e: self._set_btn_hover("gear", False))
-
-        self.add_btn = tk.Button(
-            self.cv, text="+", command=self.add_app, font=btn_font,
-            bg=BUTTON_FILL_HEX, fg=TEXT_HEX, activebackground=BUTTON_HOVER_HEX,
-            activeforeground="#ffffff", relief="flat", bd=0, width=3, pady=4, cursor="hand2",
-        )
-        self.add_btn.bind("<Enter>", lambda e: self._set_btn_hover("add", True))
-        self.add_btn.bind("<Leave>", lambda e: self._set_btn_hover("add", False))
-
-        self.sound_btn = tk.Button(
-            self.cv, text="\u266a", command=self.open_soundboard, font=btn_font,
-            bg=BUTTON_FILL_HEX, fg=TEXT_HEX, activebackground=BUTTON_HOVER_HEX,
-            activeforeground="#ffffff", relief="flat", bd=0, width=3, pady=4, cursor="hand2",
-        )
-        self.sound_btn.bind("<Enter>", lambda e: self._set_btn_hover("music", True))
-        self.sound_btn.bind("<Leave>", lambda e: self._set_btn_hover("music", False))
-
-        self.assistant_btn = tk.Button(
-            self.cv, text="AI", command=self.open_assistant, font=tkfont.Font(family="Segoe UI", size=10, weight="bold"),
-            bg=BUTTON_FILL_HEX, fg=self._accent(), activebackground=BUTTON_HOVER_HEX,
-            activeforeground="#ffffff", relief="flat", bd=0, width=3, pady=4, cursor="hand2",
-        )
-        self.assistant_btn.bind("<Enter>", lambda e: self._set_btn_hover("assistant", True))
-        self.assistant_btn.bind("<Leave>", lambda e: self._set_btn_hover("assistant", False))
-
-        self.games_btn = tk.Button(
-            self.cv, text="Games", command=self.open_games, font=tkfont.Font(family="Segoe UI", size=10, weight="bold"),
-            bg=BUTTON_FILL_HEX, fg=self._accent(), activebackground=BUTTON_HOVER_HEX,
-            activeforeground="#ffffff", relief="flat", bd=0, width=6, pady=4, cursor="hand2",
-        )
-        self.games_btn.bind("<Enter>", lambda e: self._set_btn_hover("games", True))
-        self.games_btn.bind("<Leave>", lambda e: self._set_btn_hover("games", False))
-
-        self.browser_btn = tk.Button(
-            self.cv, text="\U0001f310", command=self.open_browser, font=tkfont.Font(family="Segoe UI", size=12),
-            bg=BUTTON_FILL_HEX, fg=self._accent(), activebackground=BUTTON_HOVER_HEX,
-            activeforeground="#ffffff", relief="flat", bd=0, width=3, pady=2, cursor="hand2",
-        )
-        self.browser_btn.bind("<Enter>", lambda e: self._set_btn_hover("browser", True))
-        self.browser_btn.bind("<Leave>", lambda e: self._set_btn_hover("browser", False))
-
-        self.surprise_btn = tk.Button(
-            self.cv, text="\U0001f3b0", command=self.open_surprise, font=tkfont.Font(family="Segoe UI", size=13),
-            bg=BUTTON_FILL_HEX, fg=self._accent(), activebackground=BUTTON_HOVER_HEX,
-            activeforeground="#ffffff", relief="flat", bd=0, width=3, pady=2, cursor="hand2",
-        )
-        self.surprise_btn.bind("<Enter>", lambda e: self._set_btn_hover("surprise", True))
-        self.surprise_btn.bind("<Leave>", lambda e: self._set_btn_hover("surprise", False))
-
-        self.contacts_btn = tk.Button(
-            self.cv, text="\U0001f465", command=self.open_contacts, font=btn_font,
-            bg=BUTTON_FILL_HEX, fg=self._accent(), activebackground=BUTTON_HOVER_HEX,
-            activeforeground="#ffffff", relief="flat", bd=0, width=3, pady=2, cursor="hand2",
-        )
-        self.contacts_btn.bind("<Enter>", lambda e: self._set_btn_hover("contacts", True))
-        self.contacts_btn.bind("<Leave>", lambda e: self._set_btn_hover("contacts", False))
-
-        self.profile_btn = tk.Button(
-            self.cv, text="\U0001f464", command=self.open_profile, font=btn_font,
-            bg=BUTTON_FILL_HEX, fg=self._accent(), activebackground=BUTTON_HOVER_HEX,
-            activeforeground="#ffffff", relief="flat", bd=0, width=3, pady=2, cursor="hand2",
-        )
-        self.profile_btn.bind("<Enter>", lambda e: self._set_btn_hover("profile", True))
-        self.profile_btn.bind("<Leave>", lambda e: self._set_btn_hover("profile", False))
+        # Toolbar buttons are drawn entirely on the canvas (pill image + label,
+        # click/hover wired via tag bindings) instead of native tk.Button
+        # widgets - a real button sitting on top of a rounded pill is always
+        # a hard rectangle, so it would hide the pill's rounded corners
+        # behind its own square edges no matter how round the pill is.
+        self._toolbar_defs = {
+            "refresh":   dict(glyph="\u21bb  Refresh", font=("Segoe UI", 10), command=self.refresh, color="text"),
+            "gear":      dict(glyph="\u2699", font=("Segoe UI", 13), command=self.open_settings, color="text"),
+            "add":       dict(glyph="+", font=("Segoe UI", 15), command=self.add_app, color="text"),
+            "music":     dict(glyph="\u266a", font=("Segoe UI", 13), command=self.open_soundboard, color="text"),
+            "assistant": dict(glyph="AI", font=("Segoe UI", 10, "bold"), command=self.open_assistant, color="accent"),
+            "games":     dict(glyph="Games", font=("Segoe UI", 10, "bold"), command=self.open_games, color="accent"),
+            "browser":   dict(glyph="\U0001f310", font=("Segoe UI", 14), command=self.open_browser, color="accent"),
+            "surprise":  dict(glyph="\U0001f3b0", font=("Segoe UI", 15), command=self.open_surprise, color="accent"),
+            "contacts":  dict(glyph="\U0001f465", font=("Segoe UI", 13), command=self.open_contacts, color="accent"),
+            "profile":   dict(glyph="\U0001f464", font=("Segoe UI", 13), command=self.open_profile, color="accent"),
+        }
         self._profile_photo = None
 
         self._search_win = self.cv.create_window(0, 0, window=self.search_entry, anchor="e")
-        self._btn_win = self.cv.create_window(0, 0, window=self.refresh_btn, anchor="e")
-        self._gear_win = self.cv.create_window(0, 0, window=self.gear_btn, anchor="center")
-        self._add_win = self.cv.create_window(0, 0, window=self.add_btn, anchor="center")
-        self._music_win = self.cv.create_window(0, 0, window=self.sound_btn, anchor="center")
-        self._assistant_win = self.cv.create_window(0, 0, window=self.assistant_btn, anchor="center")
-        self._games_win = self.cv.create_window(0, 0, window=self.games_btn, anchor="center")
-        self._browser_win = self.cv.create_window(0, 0, window=self.browser_btn, anchor="center")
-        self._surprise_win = self.cv.create_window(0, 0, window=self.surprise_btn, anchor="center")
-        self._contacts_win = self.cv.create_window(0, 0, window=self.contacts_btn, anchor="center")
-        self._profile_win = self.cv.create_window(0, 0, window=self.profile_btn, anchor="center")
         self._search_bg = None
 
         self.bind("<Control-f>", self._focus_search)
@@ -862,7 +1007,18 @@ class AppLauncher(tk.Tk):
         self.bind("<Control-g>", lambda e: self.open_games())
         self.bind("<Control-b>", lambda e: self.open_browser())
         self.bind("<Control-s>", lambda e: self.open_surprise())
-        self.bind("<Escape>", lambda e: self._clear_search() if not self._placeholder else None)
+        self.bind("<Escape>", self._on_escape)
+
+        # keyboard grid navigation - arrows move a selection highlight,
+        # Enter/Space launches it. Guarded so typing in the search box
+        # (or any other text entry) still behaves normally.
+        self.bind("<Up>", lambda e: self._kbd_move(0, -1))
+        self.bind("<Down>", lambda e: self._kbd_move(0, 1))
+        self.bind("<Left>", lambda e: self._kbd_move(-1, 0))
+        self.bind("<Right>", lambda e: self._kbd_move(1, 0))
+        self.bind("<Return>", self._kbd_activate)
+        self.bind("<KP_Enter>", self._kbd_activate)
+        self.bind("<space>", self._kbd_activate)
 
     def _focus_search(self, event=None):
         if self._placeholder:
@@ -881,18 +1037,25 @@ class AppLauncher(tk.Tk):
         w, h = self.cv.winfo_width(), self.cv.winfo_height()
         if w < 10 or h < 10:
             return
-        if self.config.get("aurora"):
+        self.cv.delete("bg")
+        if self.config.get("clear_mode", False):
+            self.cv.create_rectangle(0, 0, w, HEADER_Y - 8, fill=_hex(self._bg_bottom()),
+                                     outline="", tags="bg")
+            self.cv.create_rectangle(0, h - FOOTER_H, w, h, fill=_hex(self._bg_bottom()),
+                                     outline="", tags="bg")
+            self.cv.tag_lower("bg")
+        elif self.config.get("aurora"):
             self._draw_aurora(w, h)
         else:
             self._bg_photo = make_background(w, h, self._bg_top(), self._bg_bottom(), self._glow())
-            self.cv.delete("bg")
             self.cv.create_image(0, 0, image=self._bg_photo, anchor="nw", tags="bg")
             self.cv.tag_lower("bg")
         self.search_entry.config(selectbackground=_hex(self._glow()))
         self._layout_header()
+        self._layout_chips()
         self._rebuild_cards()
         self._draw_stats()
-        if self.config["particles"]:
+        if self.config["particles"] and not self.config.get("clear_mode", False):
             self._spawn_particles()
     # ---------- effects ----------
     def _start_effects(self):
@@ -969,8 +1132,10 @@ class AppLauncher(tk.Tk):
 
     def _tick_party(self):
         self._party_i = (self._party_i + 1) % len(self._party_accents)
-        if self.cv.find_withtag("accentbar"):
-            self.cv.itemconfig("accentbar", fill=self._party_accents[self._party_i])
+        items = self.cv.find_withtag("accentbar")
+        if items:
+            color = self._party_accents[self._party_i]
+            self.cv.itemconfig(items[0], image=self._accent_bar_photo(118, color=color))
         if self.config["party"]:
             self._party_job = self.after(350, self._tick_party)
 
@@ -1194,19 +1359,175 @@ class AppLauncher(tk.Tk):
         ]
         return self.cv.create_polygon(pts, smooth=True, splinesteps=24, **kw)
 
+    def _glass_photo(self, w, h, r, base, border, hover, gloss_frac=0.5, scale=2):
+        """Shared glassy gradient renderer (fill + gloss + border), supersampled
+        then downsampled for crisp edges. Used for cards, header pills and the
+        logo mark so the whole app shares one visual language."""
+        w = max(1, int(w))
+        h = max(1, int(h))
+        r = max(0, min(int(r), w // 2, h // 2))
+        sw, sh, sr = w * scale, h * scale, r * scale
+
+        top_c = self._mix(base, (255, 255, 255), 0.16 if hover else 0.10)
+        bot_c = self._mix(base, (0, 0, 0), 0.16 if hover else 0.10)
+
+        col = Image.new("RGB", (1, sh))
+        cpx = col.load()
+        for y in range(sh):
+            cpx[0, y] = self._mix(top_c, bot_c, y / max(1, sh - 1))
+        grad = col.resize((sw, sh))
+
+        mask = Image.new("L", (sw, sh), 0)
+        ImageDraw.Draw(mask).rounded_rectangle([0, 0, sw - 1, sh - 1], radius=sr, fill=255)
+
+        img = Image.new("RGBA", (sw, sh), (0, 0, 0, 0))
+        img.paste(grad, (0, 0), mask)
+
+        gloss = Image.new("RGBA", (sw, sh), (0, 0, 0, 0))
+        ImageDraw.Draw(gloss).rounded_rectangle([0, 0, sw - 1, sh * gloss_frac], radius=sr,
+                                                 fill=(255, 255, 255, 26 if hover else 18))
+        gloss_a = Image.new("L", (sw, sh), 0)
+        gloss_a.paste(gloss.split()[3], (0, 0), mask)
+        gloss.putalpha(gloss_a)
+        img = Image.alpha_composite(img, gloss)
+
+        outline = Image.new("RGBA", (sw, sh), (0, 0, 0, 0))
+        ImageDraw.Draw(outline).rounded_rectangle([0, 0, sw - 1, sh - 1], radius=sr,
+                                                   outline=self._rgb(border) + (255,),
+                                                   width=max(1, scale))
+        img = Image.alpha_composite(img, outline)
+
+        return img.resize((w, h), Image.LANCZOS)
+
+    def _card_bg(self, hover):
+        """Glassy gradient card background, cached per (size, radius, colors)
+        so it's only re-rendered when the look actually changes - not on
+        every hover/scroll."""
+        w, h = CARD_W, self.card_h
+        r = max(0, int(self.config["radius"]))
+        base = self._card_hover() if hover else self._card_fill()
+        border = self._card_border()
+        key = (w, h, r, base, border, hover)
+        cached = self._card_bg_cache.get(key)
+        if cached is not None:
+            return cached
+        photo = ImageTk.PhotoImage(self._glass_photo(w, h, r, base, border, hover))
+        self._card_bg_cache[key] = photo
+        return photo
+
+    def _pill_bg(self, w, h, r, base, hover):
+        """Glassy gradient pill background for the header toolbar/search bar,
+        cached per (size, radius, color, hover)."""
+        border = self._card_border()
+        key = (w, h, r, base, border, hover)
+        cached = self._pill_bg_cache.get(key)
+        if cached is not None:
+            return cached
+        photo = ImageTk.PhotoImage(
+            self._glass_photo(w, h, r, base, border, hover, gloss_frac=0.55, scale=3)
+        )
+        self._pill_bg_cache[key] = photo
+        return photo
+
+    def _logo_photo(self, size=34):
+        """Small glassy app-grid mark shown next to the "App Launcher" title,
+        echoing the desktop icon's tile motif. Cached per (size, accent)."""
+        accent = self._accent()
+        key = (size, accent)
+        cached = self._logo_cache.get(key)
+        if cached is not None:
+            return cached
+
+        scale = 4
+        s = size * scale
+        a = self._rgb(accent)
+        lighter = self._mix(a, (255, 255, 255), 0.35)
+
+        grad = Image.new("RGB", (1, s))
+        gpx = grad.load()
+        for y in range(s):
+            gpx[0, y] = self._mix(lighter, a, y / max(1, s - 1))
+        grad = grad.resize((s, s))
+
+        mask = Image.new("L", (s, s), 0)
+        r = int(size * 0.32 * scale)
+        ImageDraw.Draw(mask).rounded_rectangle([0, 0, s - 1, s - 1], radius=r, fill=255)
+        img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+        img.paste(grad, (0, 0), mask)
+
+        gloss = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+        ImageDraw.Draw(gloss).rounded_rectangle([0, 0, s - 1, int(s * 0.55)], radius=r,
+                                                 fill=(255, 255, 255, 55))
+        gloss_a = Image.new("L", (s, s), 0)
+        gloss_a.paste(gloss.split()[3], (0, 0), mask)
+        gloss.putalpha(gloss_a)
+        img = Image.alpha_composite(img, gloss)
+
+        # 2x2 grid of tiny tiles, echoing the desktop icon
+        pad = int(s * 0.24)
+        gap = int(s * 0.10)
+        tile = (s - 2 * pad - gap) // 2
+        tr = max(1, int(tile * 0.28))
+        tiles = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+        td = ImageDraw.Draw(tiles)
+        for row in range(2):
+            for col_i in range(2):
+                tx0 = pad + col_i * (tile + gap)
+                ty0 = pad + row * (tile + gap)
+                alpha = 235 if (row + col_i) % 2 == 0 else 190
+                td.rounded_rectangle([tx0, ty0, tx0 + tile, ty0 + tile], radius=tr,
+                                      fill=(255, 255, 255, alpha))
+        img = Image.alpha_composite(img, tiles)
+
+        outline = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+        ImageDraw.Draw(outline).rounded_rectangle([0, 0, s - 1, s - 1], radius=r,
+                                                   outline=(255, 255, 255, 40), width=scale)
+        img = Image.alpha_composite(img, outline)
+
+        img = img.resize((size, size), Image.LANCZOS)
+        photo = ImageTk.PhotoImage(img)
+        self._logo_cache[key] = photo
+        return photo
+
+    def _accent_bar_photo(self, w, h=4, color=None):
+        """Fading gradient underline (solid accent -> transparent) used below
+        the title instead of a flat bar."""
+        accent = color or self._accent()
+        key = (w, h, accent)
+        cached = self._accent_bar_cache.get(key)
+        if cached is not None:
+            return cached
+        a = self._rgb(accent)
+        img = Image.new("RGBA", (max(1, w), h), (0, 0, 0, 0))
+        px = img.load()
+        for x in range(w):
+            t = x / max(1, w - 1)
+            alpha = int(255 * (1 - 0.72 * t))
+            for y in range(h):
+                px[x, y] = a + (alpha,)
+        photo = ImageTk.PhotoImage(img)
+        self._accent_bar_cache[key] = photo
+        return photo
+
     def _layout_header(self):
         w = self.cv.winfo_width()
         x = MARGIN
         self.cv.delete("hdr")
-        self.cv.create_text(x, 34, anchor="w", text="App Launcher",
+
+        logo_size = 34
+        self.cv.create_image(x, 17, image=self._logo_photo(logo_size), anchor="n", tags="hdr")
+        title_x = x + logo_size + 10
+        self.cv.create_text(title_x, 34, anchor="w", text="App Launcher",
                             font=self.font_title, fill=self._text_color(), tags="hdr")
-        self.cv.create_text(x, 64, anchor="w", text=APPS_DIR,
+        self.cv.create_text(title_x, 64, anchor="w", text=APPS_DIR,
                             font=self.font_sub, fill=self._muted_color(), tags="hdr")
-        self.cv.create_rectangle(x, 78, x + 118, 82, fill=self._accent(),
-                                 outline="", tags=("hdr", "accentbar"))
+        self.cv.create_image(title_x, 78, image=self._accent_bar_photo(118), anchor="nw",
+                             tags=("hdr", "accentbar"))
 
         right = w - MARGIN
-        rw, gw, aw, mw, bw, cw, dw, uw, vw, pw, gap, ew = 118, 44, 44, 44, 44, 44, 44, 44, 44, 44, 8, 190
+        # icon-only pills are shrunk toward square (36) so the max corner
+        # radius (16) reads as a near-circle; text pills (AI/Games) stay wider.
+        rw, gw, aw, mw, bw, cw, dw, uw, vw, pw, gap, ew = 118, 36, 36, 36, 44, 44, 36, 36, 36, 36, 8, 190
         r1 = right - rw
         g2 = r1 - gap
         g1 = g2 - gw
@@ -1229,51 +1550,163 @@ class AppLauncher(tk.Tk):
         s2 = p1 - gap
         s1 = s2 - ew
 
-        self._search_bg = self._round_rect(s1, 28, s2, 60, 16,
-                                           fill=SEARCH_FILL_HEX, outline=self._card_border(), tags="hdr", width=1)
-        self._btn_bgs["profile"] = self._round_rect(p1, 28, p2, 60, 12, fill=BUTTON_FILL_HEX, outline="", tags="hdr", width=0)
-        self._btn_bgs["contacts"] = self._round_rect(v1, 28, v2, 60, 12, fill=BUTTON_FILL_HEX, outline="", tags="hdr", width=0)
-        self._btn_bgs["surprise"] = self._round_rect(u1, 28, u2, 60, 12, fill=BUTTON_FILL_HEX, outline="", tags="hdr", width=0)
-        self._btn_bgs["browser"] = self._round_rect(d1, 28, d2, 60, 12, fill=BUTTON_FILL_HEX, outline="", tags="hdr", width=0)
-        self._btn_bgs["games"] = self._round_rect(c1, 28, c2, 60, 12, fill=BUTTON_FILL_HEX, outline="", tags="hdr", width=0)
-        self._btn_bgs["assistant"] = self._round_rect(b1, 28, b2, 60, 12, fill=BUTTON_FILL_HEX, outline="", tags="hdr", width=0)
-        self._btn_bgs["music"] = self._round_rect(m1, 28, m2, 60, 12, fill=BUTTON_FILL_HEX, outline="", tags="hdr", width=0)
-        self._btn_bgs["add"] = self._round_rect(a1, 28, a2, 60, 12, fill=BUTTON_FILL_HEX, outline="", tags="hdr", width=0)
-        self._btn_bgs["gear"] = self._round_rect(g1, 28, g2, 60, 12, fill=BUTTON_FILL_HEX, outline="", tags="hdr", width=0)
-        self._btn_bgs["refresh"] = self._round_rect(r1, 28, r2 := right, 60, 16, fill=BUTTON_FILL_HEX, outline="", tags="hdr", width=0)
+        def toolbar_item(which, x1, x2, r, base):
+            """Draw a toolbar pill fully on the canvas (background + label)
+            and bind clicks/hover to it directly, instead of sitting a real
+            tk.Button on top - a native button is always a hard rectangle,
+            so it would just hide the pill's rounded corners behind its own
+            square edges."""
+            w_, h_ = x2 - x1, 32
+            cx, cy = (x1 + x2) / 2, 44
+            tag = f"tb_{which}"
+            img_id = self.cv.create_image(cx, cy, image=self._pill_bg(w_, h_, r, base, False),
+                                          tags=("hdr", tag))
+            spec = self._toolbar_defs[which]
+            if which == "profile" and self._profile_photo is not None:
+                self.cv.create_image(cx, cy, image=self._profile_photo, tags=("hdr", tag))
+            else:
+                fg = self._accent() if spec.get("color") == "accent" else self._text_color()
+                self.cv.create_text(cx, cy, anchor="center", text=spec["glyph"],
+                                    font=spec["font"], fill=fg, tags=("hdr", tag))
+            if which == "contacts" and self._contacts_unread:
+                dot_r, dcx, dcy = 5, cx + w_ / 2 - 4, cy - h_ / 2 + 2
+                self.cv.create_oval(dcx - dot_r, dcy - dot_r, dcx + dot_r, dcy + dot_r,
+                                    fill="#ff4d4f", outline=_hex(self._bg_bottom()), width=2,
+                                    tags=("hdr", tag))
+            self.cv.tag_bind(tag, "<Button-1>", lambda e, w=which: self._toolbar_defs[w]["command"]())
+            self.cv.tag_bind(tag, "<Enter>", lambda e, w=which: self._on_toolbar_hover(w, True))
+            self.cv.tag_bind(tag, "<Leave>", lambda e, w=which: self._on_toolbar_hover(w, False))
+            self._btn_bgs[which] = img_id
+            self._btn_specs[which] = (w_, h_, r, base)
+
+        self._search_bg = self.cv.create_image((s1 + s2) / 2, 44,
+                                                image=self._pill_bg(s2 - s1, 32, 16, SEARCH_FILL_HEX, False),
+                                                tags="hdr")
+        self._search_focus_ring = self._round_rect(s1, 28, s2, 60, 16, fill="",
+                                                    outline=self._accent(), width=1.5, tags="hdr")
+        self.cv.itemconfig(self._search_focus_ring, state="normal" if self._search_focused else "hidden")
+
+        toolbar_item("profile", p1, p2, 16, BUTTON_FILL_HEX)
+        toolbar_item("contacts", v1, v2, 16, BUTTON_FILL_HEX)
+        toolbar_item("surprise", u1, u2, 16, BUTTON_FILL_HEX)
+        toolbar_item("browser", d1, d2, 16, BUTTON_FILL_HEX)
+        toolbar_item("games", c1, c2, 16, BUTTON_FILL_HEX)
+        toolbar_item("assistant", b1, b2, 16, BUTTON_FILL_HEX)
+        toolbar_item("music", m1, m2, 16, BUTTON_FILL_HEX)
+        toolbar_item("add", a1, a2, 16, BUTTON_FILL_HEX)
+        toolbar_item("gear", g1, g2, 16, BUTTON_FILL_HEX)
+        r2 = right
+        toolbar_item("refresh", r1, r2, 16, BUTTON_FILL_HEX)
 
         self.cv.coords(self._search_win, s2 - 10, 44)
-        self.cv.coords(self._profile_win, (p1 + p2) / 2, 44)
-        self.cv.coords(self._contacts_win, (v1 + v2) / 2, 44)
-        self.cv.coords(self._surprise_win, (u1 + u2) / 2, 44)
-        self.cv.coords(self._browser_win, (d1 + d2) / 2, 44)
-        self.cv.coords(self._games_win, (c1 + c2) / 2, 44)
-        self.cv.coords(self._assistant_win, (b1 + b2) / 2, 44)
-        self.cv.coords(self._music_win, (m1 + m2) / 2, 44)
-        self.cv.coords(self._add_win, (a1 + a2) / 2, 44)
-        self.cv.coords(self._gear_win, (g1 + g2) / 2, 44)
-        self.cv.coords(self._btn_win, r2 - 8, 44)
         self.cv.tag_raise(self._search_win)
-        self.cv.tag_raise(self._profile_win)
-        self.cv.tag_raise(self._contacts_win)
-        self.cv.tag_raise(self._surprise_win)
-        self.cv.tag_raise(self._browser_win)
-        self.cv.tag_raise(self._games_win)
-        self.cv.tag_raise(self._assistant_win)
-        self.cv.tag_raise(self._music_win)
-        self.cv.tag_raise(self._add_win)
-        self.cv.tag_raise(self._gear_win)
-        self.cv.tag_raise(self._btn_win)
 
     def _set_search_focus(self, focused):
-        if self._search_bg:
-            self.cv.itemconfig(self._search_bg, outline=self._accent() if focused else self._card_border(),
-                               width=1.5 if focused else 1)
+        self._search_focused = focused
+        if self._search_focus_ring:
+            self.cv.itemconfig(self._search_focus_ring, state="normal" if focused else "hidden")
 
     def _set_btn_hover(self, which, hovered):
-        if which in self._btn_bgs:
-            self.cv.itemconfig(self._btn_bgs[which],
-                               fill=BUTTON_HOVER_HEX if hovered else BUTTON_FILL_HEX)
+        if which in self._btn_bgs and which in self._btn_specs:
+            w, h, r, base = self._btn_specs[which]
+            self.cv.itemconfig(self._btn_bgs[which], image=self._pill_bg(w, h, r, base, hovered))
+
+    def _on_toolbar_hover(self, which, hovered):
+        self._set_btn_hover(which, hovered)
+        self.cv.config(cursor="hand2" if hovered else "")
+
+    # ---------- category filter chips ----------
+    def _layout_chips(self):
+        self.cv.delete("chips")
+        labels = ["All", FAVORITES_LABEL] + self._all_categories()
+        x = MARGIN
+        cy = 100
+        h = 24
+        gap = 8
+        for i, label in enumerate(labels):
+            active = label == self._active_category
+            tw = self.font_sub.measure(label)
+            cw = max(h, tw + 24)
+            tag = f"chip{i}"
+            base = self._accent() if active else BUTTON_FILL_HEX
+            fg = "#14182a" if active else self._text_color()
+            self.cv.create_image(x + cw / 2, cy, image=self._pill_bg(cw, h, h // 2, base, False),
+                                 tags=("chips", tag))
+            self.cv.create_text(x + cw / 2, cy, anchor="center", text=label,
+                                font=self.font_sub, fill=fg, tags=("chips", tag))
+            self.cv.tag_bind(tag, "<Button-1>", lambda e, l=label: self._set_active_category(l))
+            self.cv.tag_bind(tag, "<Enter>", lambda e: self.cv.config(cursor="hand2"))
+            self.cv.tag_bind(tag, "<Leave>", lambda e: self.cv.config(cursor=""))
+            x += cw + gap
+
+        self._layout_dock(x, cy, h)
+
+    def _set_active_category(self, label):
+        if self._active_category == label:
+            return
+        self._active_category = label
+        self._layout_chips()
+        self._apply_filter()
+
+    def _toggle_favorite(self, path):
+        if path in self._favorites:
+            self._favorites.discard(path)
+        else:
+            self._favorites.add(path)
+        self._save_stats()
+        self._layout_chips()
+        if self._active_category == FAVORITES_LABEL:
+            self._apply_filter()
+
+    def _prompt_category(self, path):
+        from tkinter import simpledialog
+        current = self._categories.get(path, "")
+        existing = self._all_categories()
+        hint = ", ".join(existing) if existing else "none yet"
+        name = simpledialog.askstring(
+            "Set category",
+            f"Category for this app (existing: {hint}).\nLeave blank to clear.",
+            initialvalue=current, parent=self,
+        )
+        if name is None:
+            return
+        name = name.strip()
+        if name:
+            self._categories[path] = name
+        else:
+            self._categories.pop(path, None)
+        self._save_stats()
+        if self._active_category not in ("All", FAVORITES_LABEL, *self._all_categories()):
+            self._active_category = "All"
+        self._layout_chips()
+        self._apply_filter()
+
+    def _prompt_app_color(self, path):
+        current = self._app_colors.get(path) or accent_for(self._dock_name(path))
+        color = colorchooser.askcolor(color=current, parent=self, title="Custom card color")
+        if color and color[1]:
+            self._app_colors[path] = color[1]
+            self._save_stats()
+            self._rebuild_cards()
+
+    def _prompt_app_icon(self, path):
+        img_path = filedialog.askopenfilename(
+            title="Choose a custom icon", parent=self,
+            filetypes=[("Images", "*.png *.jpg *.jpeg *.ico *.bmp *.gif"), ("All files", "*.*")],
+        )
+        if not img_path:
+            return
+        self._app_icons[path] = img_path
+        self._icon_cache = {k: v for k, v in self._icon_cache.items() if k[0] != path}
+        self._save_stats()
+        self._rebuild_cards()
+
+    def _reset_app_appearance(self, path):
+        self._app_colors.pop(path, None)
+        self._app_icons.pop(path, None)
+        self._icon_cache = {k: v for k, v in self._icon_cache.items() if k[0] != path}
+        self._save_stats()
+        self._rebuild_cards()
 
     # ---------- footer ----------
     def _draw_footer(self):
@@ -1284,14 +1717,27 @@ class AppLauncher(tk.Tk):
         left = click_hint
         if self.config.get("show_count", True):
             left = f"{len(self.items)} apps  \u00b7  {left}"
-        if AppContacts.is_owner():
+        if AppContacts.is_verified_owner():
             left = f"\u2b50 Owner  \u00b7  {left}"
         self.cv.create_text(MARGIN, h - 24, anchor="w",
                             text=left,
                             font=self.font_footer, fill=self._muted_color(), tags="ftr")
-        self.cv.create_text(w - MARGIN, h - 24, anchor="e",
-                            text="Refresh \u21bb to pick up new apps",
-                            font=self.font_footer, fill=self._muted_color(), tags="ftr")
+        update_to = getattr(self, "_update_version", None)
+        if getattr(self, "_updating", False):
+            item = self.cv.create_text(w - MARGIN, h - 24, anchor="e",
+                                       text="\u2b07 Updating\u2026",
+                                       font=self.font_footer, fill=self._accent(), tags="ftr")
+        elif update_to:
+            item = self.cv.create_text(w - MARGIN, h - 24, anchor="e",
+                                       text=f"\U0001f514 Update available (v{update_to}) \u2014 click to update",
+                                       font=self.font_footer, fill=self._accent(), tags=("ftr", "update"))
+            self.cv.tag_bind(item, "<Button-1>", lambda e: self._on_update_click())
+            self.cv.tag_bind(item, "<Enter>", lambda e: self.cv.config(cursor="hand2"))
+            self.cv.tag_bind(item, "<Leave>", lambda e: self.cv.config(cursor=""))
+        else:
+            self.cv.create_text(w - MARGIN, h - 24, anchor="e",
+                                text="Refresh \u21bb to pick up new apps",
+                                font=self.font_footer, fill=self._muted_color(), tags="ftr")
 
     # ---------- scanning / filtering ----------
     def _scan(self):
@@ -1360,22 +1806,114 @@ class AppLauncher(tk.Tk):
         self._on_search_focus_out()
         self.focus_set()
 
+    def _on_escape(self, event=None):
+        if not self._placeholder:
+            self._clear_search()
+        elif self._kbd_idx is not None:
+            self._kbd_clear()
+
+    # ---------- keyboard grid navigation ----------
+    def _kbd_nav_active(self):
+        """False while a text entry (search box, etc.) has focus, so arrow
+        keys/Enter/Space keep doing their normal text-editing thing there
+        instead of also moving the card selection."""
+        try:
+            f = self.focus_get()
+        except Exception:
+            return True
+        return not isinstance(f, (tk.Entry, tk.Text))
+
+    def _kbd_move(self, dx, dy):
+        if not self._kbd_nav_active():
+            return
+        if not self.visible:
+            return "break"
+        cols = self._cols()
+        n = len(self.visible)
+        if self._kbd_idx is None or self._kbd_idx >= n:
+            new_idx = 0
+        else:
+            row, col = divmod(self._kbd_idx, cols)
+            row = max(0, row + dy)
+            col = max(0, min(cols - 1, col + dx))
+            new_idx = min(n - 1, row * cols + col)
+        self._set_kbd_idx(new_idx)
+        return "break"
+
+    def _set_kbd_idx(self, idx):
+        self._kbd_idx = idx
+        self._redraw_cards()
+        self._scroll_to_kbd_idx()
+
+    def _kbd_clear(self):
+        if self._kbd_idx is not None:
+            self._kbd_idx = None
+            self._redraw_cards()
+
+    def _scroll_to_kbd_idx(self):
+        if self._kbd_idx is None or self._kbd_idx not in self._base_pos:
+            return
+        top, bottom = self._viewport()
+        view_h = bottom - top
+        if self._content_h <= view_h:
+            return
+        cols = self._cols()
+        row = self._kbd_idx // cols
+        card_top = row * (self.card_h + V_GAP)
+        card_bottom = card_top + self.card_h
+        changed = False
+        if card_top < self._offset:
+            self._offset = card_top
+            changed = True
+        elif card_bottom > self._offset + view_h:
+            self._offset = card_bottom - view_h
+            changed = True
+        if changed:
+            self._offset = max(0, min(self._offset, self._content_h - view_h))
+            self._allow_anim = False
+            self._rebuild_cards()
+
+    def _kbd_activate(self, event=None):
+        if not self._kbd_nav_active():
+            return
+        if self._kbd_idx is not None and 0 <= self._kbd_idx < len(self.visible):
+            self._launch(self._kbd_idx)
+        return "break"
+
+    def _matches_category(self, item):
+        if self._active_category == "All":
+            return True
+        if self._active_category == FAVORITES_LABEL:
+            return item[1] in self._favorites
+        return self._categories.get(item[1]) == self._active_category
+
+    def _all_categories(self):
+        return sorted({c for c in self._categories.values() if c})
+
     def _apply_filter(self):
         query = self.search_var.get().strip().lower()
         if self._placeholder:
             query = ""
+        items = self.items
         if query:
-            self.visible = [it for it in self.items if query in it[0].lower()]
-        else:
-            self.visible = list(self.items)
+            items = [it for it in items if query in it[0].lower()]
+        if self._active_category != "All":
+            items = [it for it in items if self._matches_category(it)]
+        self.visible = items
         self._allow_anim = True
         self._offset = 0
+        self._kbd_idx = None
         self._rebuild_cards()
         self._draw_footer()
 
     # ---------- cards ----------
     def _viewport(self):
         return HEADER_Y, self.cv.winfo_height() - FOOTER_H
+
+    def _cols(self):
+        w = self.cv.winfo_width()
+        max_cols = max(2, int(self.config.get("max_cols", 8)))
+        return min(max_cols, max(2, (w - 2 * MARGIN + H_GAP) // (CARD_W + H_GAP)))
 
     def _rebuild_cards(self):
         self._cancel_anim()
@@ -1392,9 +1930,7 @@ class AppLauncher(tk.Tk):
         if view_h <= 0:
             return
 
-        w = self.cv.winfo_width()
-        max_cols = max(2, int(self.config.get("max_cols", 8)))
-        cols = min(max_cols, max(2, (w - 2 * MARGIN + H_GAP) // (CARD_W + H_GAP)))
+        cols = self._cols()
         rows = (len(self.visible) + cols - 1) // cols if self.visible else 0
         self._content_h = max(view_h, rows * (self.card_h + V_GAP) - V_GAP)
         self._offset = min(self._offset, max(0, self._content_h - view_h))
@@ -1405,9 +1941,33 @@ class AppLauncher(tk.Tk):
             self._base_pos[i] = (cx, cy)
             self._draw_card(i, name, path, is_dir, cx, cy)
 
+        if not self.visible:
+            self._draw_empty_state(top, bottom)
+
         self._draw_thumb()
         self._draw_footer()
         self._animate_cards()
+
+    def _draw_empty_state(self, top, bottom):
+        """Shown instead of a blank grid so it's obvious *why* nothing is
+        there - either nothing's been added yet, or the active filter/search
+        is hiding everything that has been."""
+        w = self.cv.winfo_width()
+        cx, cy = w / 2, top + (bottom - top) / 2
+        if not self.items:
+            title = "No apps here yet"
+            sub = "Click the + button above to add one, or drop a shortcut into the apps folder."
+        elif self._active_category != "All":
+            title = f"Nothing in “{self._active_category}”"
+            sub = "Click “All” above to see everything again."
+        else:
+            title = "No matches"
+            sub = "Try a different search, or clear it to see everything again."
+        self.cv.create_text(cx, cy - 12, anchor="center", text=title,
+                            font=self.font_title, fill=self._text_color(), tags="card")
+        self.cv.create_text(cx, cy + 16, anchor="center", text=sub, width=min(420, w - 80),
+                            justify="center", font=self.font_sub, fill=self._muted_color(),
+                            tags="card")
 
     def _draw_card(self, idx, name, path, is_dir, cx, cy):
         tag = f"c{idx}"
@@ -1416,53 +1976,64 @@ class AppLauncher(tk.Tk):
         r = max(0, int(self.config["radius"]))
         self._card_rects[idx] = (x0, y0, x1, y1)
 
-        self._round_rect(x0, y0 + 6, x1, y1 + 6, r, fill=self._shadow(),
+        self._round_rect(x0, y0 + 8, x1, y1 + 8, r, fill=self._shadow(),
                          outline="", tags=(tag, "card"))
 
         photo = self._icon_for(path)
-        hover_on = idx == self._hover_idx
+        hover_on = idx == self._hover_idx or idx == self._kbd_idx
         glow = bool(self.config.get("hover_glow", True))
-        body = self._card_hover() if hover_on else self._card_fill()
-        border = accent_for(name) if (hover_on and glow) else self._card_border()
-        bwidth = 2 if (hover_on and glow) else 1
 
-        self._round_rect(x0, y0, x1, y1, r, fill=body, outline=border,
-                         width=bwidth, tags=(tag, "card"))
+        self.cv.create_image(cx, cy, image=self._card_bg(hover_on), tags=(tag, "card"))
+
+        if hover_on and glow:
+            border = self._app_colors.get(path) or accent_for(name)
+            self._round_rect(x0, y0, x1, y1, r, fill="", outline=border,
+                             width=2, tags=(tag, "card"))
 
         s = self.icon_size
-        icon_y = y0 + 38 + s // 2
+        icon_y = y0 + 44 + s // 2
         self.cv.create_image(cx, icon_y, image=photo, tags=(tag, "card"))
 
         if hover_on and glow:
-            self.cv.create_oval(cx - s / 2 - 5, icon_y - s / 2 - 5, cx + s / 2 + 5, icon_y + s / 2 + 5,
+            self.cv.create_oval(cx - s / 2 - 6, icon_y - s / 2 - 6, cx + s / 2 + 6, icon_y + s / 2 + 6,
                                 outline=border, width=2, tags=(tag, "card"))
 
-        text_color = "#ffffff" if idx == self._hover_idx else self._text_color()
-        self.cv.create_text(cx, y0 + self.card_h - 24, anchor="center", width=CARD_W - 18,
+        text_color = "#ffffff" if hover_on else self._text_color()
+        self.cv.create_text(cx, y0 + self.card_h - 28, anchor="center", width=CARD_W - 26,
                             text=name, font=self.font_card, fill=text_color,
                             justify="center", tags=(tag, "card"))
 
         if is_dir:
-            chip = accent_for(name)
-            chip_r = min(8, r + 2) if r else 6
-            self._round_rect(x1 - 34, y0 + 10, x1 - 10, y0 + 26, chip_r,
+            chip = self._app_colors.get(path) or accent_for(name)
+            chip_r = min(9, r + 2) if r else 7
+            self._round_rect(x1 - 38, y0 + 12, x1 - 12, y0 + 30, chip_r,
                              fill=chip, outline="", tags=(tag, "card"))
-            self.cv.create_text(x1 - 22, y0 + 18, anchor="center",
+            self.cv.create_text(x1 - 25, y0 + 21, anchor="center",
                                 text="\u229e", font=self.font_sub, fill="#14182a",
                                 tags=(tag, "card"))
 
         count = self._launches.get(path, 0)
         if count > 0:
-            br = 11
-            self._round_rect(x0 + 6, y0 + 6, x0 + 6 + 2 * br, y0 + 6 + 2 * br, br,
+            br = 12
+            self._round_rect(x0 + 8, y0 + 8, x0 + 8 + 2 * br, y0 + 8 + 2 * br, br,
                              fill=self._accent(), outline="", tags=(tag, "card"))
-            self.cv.create_text(x0 + 6 + br, y0 + 6 + br, anchor="center", text=str(count),
+            self.cv.create_text(x0 + 8 + br, y0 + 8 + br, anchor="center", text=str(count),
                                 font=self._badge_font, fill="#14182a", tags=(tag, "card"))
 
     def _icon_for(self, path):
-        key = (path, self.icon_size)
+        custom = self._app_icons.get(path)
+        key = (path, self.icon_size, custom)
         if key not in self._icon_cache:
-            photo = get_file_icon(path, self.icon_size)
+            photo = None
+            if custom and os.path.exists(custom):
+                try:
+                    img = Image.open(custom).convert("RGBA")
+                    img = img.resize((self.icon_size, self.icon_size), Image.LANCZOS)
+                    photo = ImageTk.PhotoImage(img)
+                except Exception:
+                    photo = None
+            if photo is None:
+                photo = get_file_icon(path, self.icon_size)
             if photo is None:
                 photo = fallback_icon(self.icon_size)
             self._icon_cache[key] = photo
@@ -1546,6 +2117,7 @@ class AppLauncher(tk.Tk):
         if idx is not None:
             self._pressed_idx = idx
             self._dragged = False
+            self._kbd_idx = idx
             self.cv.move(f"c{idx}", 0, 2)
 
     def _on_drag(self, event):
@@ -1603,6 +2175,19 @@ class AppLauncher(tk.Tk):
             name, path, is_dir = self.visible[idx]
             menu.add_command(label=f"Launch {name}", command=lambda: self._launch(idx))
             menu.add_command(label="Open location", command=lambda: open_location(path))
+            menu.add_separator()
+            fav_label = ("★ Remove from Favorites" if path in self._favorites
+                        else "☆ Pin to Favorites")
+            menu.add_command(label=fav_label, command=lambda: self._toggle_favorite(path))
+            menu.add_command(label="Set category…", command=lambda: self._prompt_category(path))
+            dock_label = "Unpin from quick-launch dock" if path in self._dock else "Pin to quick-launch dock"
+            menu.add_command(label=dock_label, command=lambda: self._toggle_dock(path))
+            menu.add_command(label="Schedule daily launch…", command=lambda: self._prompt_schedule(path))
+            menu.add_separator()
+            menu.add_command(label="Custom color…", command=lambda: self._prompt_app_color(path))
+            menu.add_command(label="Custom icon…", command=lambda: self._prompt_app_icon(path))
+            if path in self._app_colors or path in self._app_icons:
+                menu.add_command(label="Reset appearance", command=lambda: self._reset_app_appearance(path))
             if not is_dir:
                 menu.add_separator()
                 menu.add_command(label="Remove from launcher",
@@ -1663,6 +2248,14 @@ class AppLauncher(tk.Tk):
             self._flash_status(f"Removed {name}")
         except Exception as e:
             self._flash_status(f"Could not remove {name}: {e}")
+        self._favorites.discard(path)
+        self._categories.pop(path, None)
+        if path in self._dock:
+            self._dock.remove(path)
+        self._schedules.pop(path, None)
+        self._app_colors.pop(path, None)
+        self._app_icons.pop(path, None)
+        self._save_stats()
         self.refresh()
 
     def open_folder(self):
@@ -1706,6 +2299,10 @@ class AppLauncher(tk.Tk):
         AppGames.GamesWindow(self)
 
     def open_contacts(self):
+        if self._contacts_unread:
+            self._contacts_unread = False
+            if hasattr(self, "cv") and self.cv.winfo_width() > 10:
+                self._layout_header()
         AppContacts.ContactsWindow(self)
 
     def open_profile(self):
@@ -1716,15 +2313,30 @@ class AppLauncher(tk.Tk):
             key = AppContacts.avatar_key()
             if not key:
                 self._profile_photo = None
-                self.profile_btn.config(text="\U0001f464", image="", width=3, pady=2)
-                return
-            letter = (self.config.get("username") or "?")[:1].upper()
-            self._profile_photo = AppContacts.avatar_photo(key, 40, letter, shape="rounded")
-            self.profile_btn.config(text="", image=self._profile_photo, width=0, pady=0)
+            else:
+                letter = (self.config.get("username") or "?")[:1].upper()
+                self._profile_photo = AppContacts.avatar_photo(key, 28, letter, shape="rounded")
         except Exception:
-            pass
+            self._profile_photo = None
+        # the profile pill redraws itself (photo or fallback glyph) the next
+        # time the header lays out; if the canvas is already up, do it now.
+        if hasattr(self, "cv") and self.cv.winfo_width() > 10:
+            self._layout_header()
 
     def open_browser(self, url=None):
+        if getattr(sys, "frozen", False):
+            # running as a bundled .exe - launch the sibling AppBrowser.exe
+            base_dir = os.path.dirname(os.path.abspath(sys.executable))
+            browser_exe = os.path.join(base_dir, "AppBrowser.exe")
+            if not os.path.exists(browser_exe):
+                webbrowser.open(url or "https://www.google.com")
+                return
+            cmd = [browser_exe]
+            if url:
+                cmd.append(url)
+            run_hidden(cmd, shell=False)
+            return
+
         browser_py = os.path.join(os.path.dirname(os.path.abspath(__file__)), "AppBrowser.py")
         if not os.path.exists(browser_py):
             webbrowser.open(url or "https://www.google.com")
@@ -1732,7 +2344,7 @@ class AppLauncher(tk.Tk):
         cmd = [sys.executable, browser_py]
         if url:
             cmd.append(url)
-        subprocess.Popen(cmd, shell=False, close_fds=True)
+        run_hidden(cmd, shell=False)
 
     # ---------- surprise me ----------
     def open_surprise(self):
@@ -1773,7 +2385,7 @@ class AppLauncher(tk.Tk):
             self._do_launch(name, path, is_dir)
 
     def open_music(self):
-        music_bat = os.path.join(APPS_DIR, "Music", "Music.bat")
+        music_bat = os.path.join(BASE_DIR, "Music", "Music.bat")
         if os.path.exists(music_bat):
             try:
                 os.startfile(music_bat)
@@ -1833,6 +2445,389 @@ class AppLauncher(tk.Tk):
             self._start_tray()
         elif not self.config.get("tray") and self._tray_running:
             self._stop_tray()
+
+    # ---------- start with Windows ----------
+    def _startup_command(self):
+        """Command line that should open App Launcher, mirroring the same
+        exe-if-present-else-python logic App Launcher.vbs uses."""
+        if getattr(sys, "frozen", False):
+            return f'"{os.path.abspath(sys.executable)}"'
+        exe_path = os.path.join(BASE_DIR, "AppLauncher.exe")
+        if os.path.exists(exe_path):
+            return f'"{exe_path}"'
+        py_dir = os.path.dirname(os.path.abspath(sys.executable))
+        pythonw = os.path.join(py_dir, "pythonw.exe")
+        if not os.path.exists(pythonw):
+            pythonw = "pythonw.exe"
+        run_py = os.path.join(BASE_DIR, "run.py")
+        return f'"{pythonw}" "{run_py}"'
+
+    def _apply_autostart(self):
+        try:
+            import winreg
+            key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE) as k:
+                if self.config.get("autostart", False):
+                    winreg.SetValueEx(k, "AppLauncher", 0, winreg.REG_SZ, self._startup_command())
+                else:
+                    try:
+                        winreg.DeleteValue(k, "AppLauncher")
+                    except FileNotFoundError:
+                        pass
+        except Exception:
+            pass
+
+    # ---------- Contacts unread badge ----------
+    def _start_contacts_watch(self):
+        self._contacts_watch_since = time.time()
+        self._poll_contacts_unread()
+
+    def _stop_contacts_watch(self):
+        if self._contacts_poll_job:
+            try:
+                self.after_cancel(self._contacts_poll_job)
+            except Exception:
+                pass
+        self._contacts_poll_job = None
+
+    def _poll_contacts_unread(self):
+        try:
+            session = AppNet.load_session()
+        except Exception:
+            session = None
+        if session:
+            threading.Thread(target=self._check_contacts_unread, args=(session,), daemon=True).start()
+        self._contacts_poll_job = self.after(60000, self._poll_contacts_unread)
+
+    def _check_contacts_unread(self, session):
+        # Best-effort: only flags messages that arrive while the app is
+        # running (no server-side unread tracking to catch up on history).
+        try:
+            net = AppNet.Net(session["url"], session["token"])
+            me_id = str(session.get("id") or "")
+            since = self._contacts_watch_since
+            friends = net.friends() or []
+            found = False
+            for f in friends:
+                fid = f.get("id")
+                if not fid:
+                    continue
+                try:
+                    msgs = net.messages(fid, after=since) or []
+                except Exception:
+                    continue
+                if any(str(m.get("from")) != me_id for m in msgs):
+                    found = True
+                    break
+            if found:
+                self._contacts_watch_since = time.time()
+                self.after(0, self._set_contacts_unread, True)
+        except Exception:
+            pass
+
+    def _set_contacts_unread(self, value):
+        if self._contacts_unread == value:
+            return
+        self._contacts_unread = value
+        if hasattr(self, "cv") and self.cv.winfo_width() > 10:
+            self._layout_header()
+
+    # ---------- update check ----------
+    def _start_update_check(self):
+        threading.Thread(target=self._fetch_update_version, daemon=True).start()
+
+    def _fetch_update_version(self):
+        try:
+            req = urllib.request.Request(UPDATE_CHECK_URL, headers={"User-Agent": "AppLauncher"})
+            with urllib.request.urlopen(req, timeout=8) as r:
+                remote = r.read().decode("utf-8", "ignore").strip()
+            if remote and remote != VERSION:
+                self.after(0, self._set_update_available, remote)
+        except Exception:
+            pass
+
+    def _set_update_available(self, remote_version):
+        self._update_version = remote_version
+        if hasattr(self, "cv") and self.cv.winfo_width() > 10:
+            self._draw_footer()
+
+    def _on_update_click(self):
+        if self._updating:
+            return
+        version = self._update_version
+        if not messagebox.askyesno(
+            "Update available",
+            f"Download and install v{version} now?\n\n"
+            "App Launcher will restart automatically once it's done. "
+            "Your apps, contacts, and settings are not touched.",
+        ):
+            return
+        self._updating = True
+        self._draw_footer()
+        threading.Thread(target=self._download_update, args=(version,), daemon=True).start()
+
+    def _download_update(self, version):
+        # Fetch every file into memory first - only write to disk once the
+        # whole set has downloaded cleanly, so a dropped connection midway
+        # never leaves a half-updated, broken app on disk.
+        try:
+            fetched = {}
+            for name in UPDATE_FILES:
+                req = urllib.request.Request(UPDATE_RAW_BASE + name, headers={"User-Agent": "AppLauncher"})
+                with urllib.request.urlopen(req, timeout=15) as r:
+                    fetched[name] = r.read()
+                if not fetched[name]:
+                    raise ValueError(f"{name} came back empty.")
+            # Distributed copies get their source files marked read-only (see
+            # run.py's _lock_down_distributed_copy) so friends can't casually
+            # edit them - clear that before overwriting, then reapply it, so
+            # the updater itself still works.
+            locked = not os.path.isdir(os.path.join(BASE_DIR, ".git"))
+            for name, data in fetched.items():
+                dest = os.path.join(BASE_DIR, name)
+                tmp = dest + ".update_tmp"
+                with open(tmp, "wb") as f:
+                    f.write(data)
+                if os.path.exists(dest):
+                    try:
+                        os.chmod(dest, stat.S_IWRITE)
+                    except Exception:
+                        pass
+                os.replace(tmp, dest)
+                if locked:
+                    try:
+                        os.chmod(dest, stat.S_IREAD)
+                    except Exception:
+                        pass
+        except Exception as e:
+            self.after(0, self._update_failed, str(e))
+            return
+        self.after(0, self._update_applied, version)
+
+    def _update_failed(self, message):
+        self._updating = False
+        self._draw_footer()
+        messagebox.showerror(
+            "Update failed",
+            f"Couldn't finish updating: {message}\n\n"
+            f"You can still update manually from {UPDATE_REPO_URL}",
+        )
+
+    def _update_applied(self, version):
+        self._updating = False
+        self._update_version = None
+        if not messagebox.askyesno(
+            "Update installed",
+            f"v{version} is installed. Restart App Launcher now to start using it?",
+        ):
+            self._draw_footer()
+            return
+        self._restart_app()
+
+    def _restart_app(self):
+        # Relaunch through the same wrapper the user's shortcut points to
+        # rather than re-exec'ing directly - the wrapper already knows how
+        # to pick freshly-updated .py files over a now-stale built .exe.
+        try:
+            vbs = os.path.join(BASE_DIR, "App Launcher.vbs")
+            bat = os.path.join(BASE_DIR, "App Launcher.bat")
+            if os.path.exists(vbs):
+                os.startfile(vbs)
+            elif os.path.exists(bat):
+                os.startfile(bat)
+            else:
+                subprocess.Popen([sys.executable, os.path.join(BASE_DIR, "run.py")],
+                                 cwd=BASE_DIR, creationflags=_NO_WINDOW_FLAGS)
+        except Exception:
+            pass
+        self.after(300, lambda: os._exit(0))
+
+    # ---------- cloud settings sync ----------
+    def _cloud_net(self):
+        try:
+            session = AppNet.load_session()
+        except Exception:
+            session = None
+        if not session:
+            return None
+        return AppNet.Net(session["url"], session["token"])
+
+    def push_to_cloud(self, silent=False):
+        net = self._cloud_net()
+        if not net:
+            if not silent:
+                messagebox.showinfo("Cloud sync",
+                                    "Sign in via Contacts first, then your settings can sync to your account.")
+            return
+        if self._syncing:
+            return
+        self._syncing = True
+        blob = self._stats_blob()
+        threading.Thread(target=self._do_push, args=(net, blob, silent), daemon=True).start()
+
+    def _do_push(self, net, blob, silent):
+        try:
+            net.set_settings(blob)
+            self.after(0, self._sync_done, True, silent, None, "push")
+        except Exception as e:
+            self.after(0, self._sync_done, False, silent, str(e), "push")
+
+    def pull_from_cloud(self, silent=False):
+        net = self._cloud_net()
+        if not net:
+            if not silent:
+                messagebox.showinfo("Cloud sync",
+                                    "Sign in via Contacts first, then your settings can sync to your account.")
+            return
+        if self._syncing:
+            return
+        self._syncing = True
+        threading.Thread(target=self._do_pull, args=(net, silent), daemon=True).start()
+
+    def _do_pull(self, net, silent):
+        try:
+            remote = net.get_settings()
+            data = remote.get("data") if isinstance(remote, dict) else None
+            if not data:
+                self.after(0, self._sync_done, False, silent,
+                          "No settings have been saved to your account yet - try Push first.", "pull")
+                return
+            self.after(0, self._apply_pulled, data, silent)
+        except Exception as e:
+            self.after(0, self._sync_done, False, silent, str(e), "pull")
+
+    def _apply_pulled(self, data, silent):
+        self._apply_stats_blob(data)
+        self.refresh()
+        if hasattr(self, "cv") and self.cv.winfo_width() > 10:
+            self._draw_bg()
+        self._sync_done(True, silent, None, "pull")
+
+    def _sync_done(self, ok, silent, err, direction):
+        self._syncing = False
+        if silent:
+            return
+        if ok:
+            msg = ("Pushed your settings to your account." if direction == "push"
+                  else "Pulled settings from your account.")
+            self._flash_status(msg)
+        elif direction == "pull" and err and "saved to your account" in err:
+            messagebox.showinfo("Cloud sync", err)
+        else:
+            messagebox.showerror("Cloud sync", f"Sync failed: {err}")
+
+    def _start_cloud_sync(self):
+        if self.config.get("cloud_sync"):
+            self.pull_from_cloud(silent=True)
+
+    # ---------- scheduled launch ----------
+    def _start_schedule_watch(self):
+        self._check_schedules()
+
+    def _stop_schedule_watch(self):
+        if self._schedule_job:
+            try:
+                self.after_cancel(self._schedule_job)
+            except Exception:
+                pass
+        self._schedule_job = None
+
+    def _check_schedules(self):
+        if self._schedules:
+            now = datetime.datetime.now()
+            stamp = now.strftime("%Y-%m-%d %H:%M")
+            hhmm = now.strftime("%H:%M")
+            for path, sched_time in list(self._schedules.items()):
+                if sched_time == hhmm and self._schedule_fired.get(path) != stamp:
+                    self._schedule_fired[path] = stamp
+                    if os.path.exists(path):
+                        name = os.path.basename(path)
+                        self._do_launch(name, path, os.path.isdir(path))
+        self._schedule_job = self.after(20000, self._check_schedules)
+
+    def _prompt_schedule(self, path):
+        from tkinter import simpledialog
+        current = self._schedules.get(path, "")
+        val = simpledialog.askstring(
+            "Schedule daily launch",
+            "Launch this every day at (24-hour HH:MM, e.g. 17:30).\nLeave blank to remove the schedule.",
+            initialvalue=current, parent=self,
+        )
+        if val is None:
+            return
+        val = val.strip()
+        if not val:
+            self._schedules.pop(path, None)
+            self._save_stats()
+            return
+        if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", val):
+            messagebox.showerror("Schedule daily launch", "Please use 24-hour HH:MM, e.g. 09:00 or 17:30.")
+            return
+        self._schedules[path] = val
+        self._save_stats()
+        self._flash_status(f"Scheduled for {val} daily")
+
+    # ---------- quick-launch dock ----------
+    def _toggle_dock(self, path):
+        if path in self._dock:
+            self._dock.remove(path)
+        else:
+            if len(self._dock) >= 8:
+                messagebox.showinfo("Quick-launch dock", "The dock holds up to 8 apps - unpin one first.")
+                return
+            self._dock.append(path)
+        self._save_stats()
+        self._layout_chips()
+
+    def _dock_name(self, path):
+        for name, p, _ in self.items:
+            if p == path:
+                return name
+        return os.path.basename(path)
+
+    def _layout_dock(self, x, cy, h):
+        """Draws pinned quick-launch icons after the filter chips, on the
+        same row. Returns nothing - just advances the shared canvas state."""
+        valid = [p for p in self._dock if os.path.exists(p)]
+        if len(valid) != len(self._dock):
+            self._dock = valid
+            self._save_stats()
+        if not valid:
+            return
+        self.cv.create_line(x, cy - h / 2, x, cy + h / 2, fill=self._card_border(), tags="chips")
+        x += 12
+        for path in valid:
+            name = self._dock_name(path)
+            tag = f"dock_{abs(hash(path))}"
+            self.cv.create_image(x + h / 2, cy, image=self._pill_bg(h, h, h // 2, BUTTON_FILL_HEX, False),
+                                 tags=("chips", tag))
+            icon = self._icon_for_size(path, int(h * 0.6))
+            if icon is not None:
+                self.cv.create_image(x + h / 2, cy, image=icon, tags=("chips", tag))
+            self.cv.tag_bind(tag, "<Button-1>", lambda e, p=path, n=name: self._do_launch(n, p, os.path.isdir(p)))
+            self.cv.tag_bind(tag, "<Enter>", lambda e: self.cv.config(cursor="hand2"))
+            self.cv.tag_bind(tag, "<Leave>", lambda e: self.cv.config(cursor=""))
+            x += h + 6
+
+    def _icon_for_size(self, path, size):
+        custom = self._app_icons.get(path)
+        key = (path, size, "dock", custom)
+        if key not in self._icon_cache:
+            photo = None
+            if custom and os.path.exists(custom):
+                try:
+                    img = Image.open(custom).convert("RGBA")
+                    img = img.resize((size, size), Image.LANCZOS)
+                    photo = ImageTk.PhotoImage(img)
+                except Exception:
+                    photo = None
+            if photo is None:
+                photo = get_file_icon(path, size)
+            if photo is None:
+                photo = fallback_icon(size)
+            self._icon_cache[key] = photo
+        self._photos.append(self._icon_cache[key])
+        return self._icon_cache[key]
 
     def _start_tray(self):
         try:
@@ -1911,6 +2906,18 @@ class AppLauncher(tk.Tk):
         else:
             self._quitting = True
             self._stop_tray()
+            self._stop_contacts_watch()
+            self._stop_schedule_watch()
+            if self.config.get("cloud_sync"):
+                # Best-effort, synchronous so it actually gets a chance to
+                # finish before the window (and its background threads) go
+                # away - a slow/offline server just means this is skipped.
+                try:
+                    net = self._cloud_net()
+                    if net:
+                        net.set_settings(self._stats_blob())
+                except Exception:
+                    pass
             self.destroy()
 
 
@@ -2108,6 +3115,8 @@ class SettingsWindow(tk.Toplevel):
         self._check(opt_frame, "Live stats bar (clock, weather, CPU/RAM)", self._stats_var, self._set_stats).pack(anchor="w")
         self._tray_var = tk.BooleanVar(value=bool(self.app.config.get("tray", False)))
         self._check(opt_frame, "Minimize to tray (Ctrl+Shift+L)", self._tray_var, self._set_tray).pack(anchor="w")
+        self._autostart_var = tk.BooleanVar(value=bool(self.app.config.get("autostart", False)))
+        self._check(opt_frame, "Start with Windows", self._autostart_var, self._set_autostart).pack(anchor="w")
 
         self._title("Hover highlight")
         hov_frame = tk.Frame(self._inner, bg=self.SET_BG)
@@ -2163,6 +3172,8 @@ class SettingsWindow(tk.Toplevel):
         self._title("Fun stuff")
         fun_frame = tk.Frame(self._inner, bg=self.SET_BG)
         fun_frame.pack(fill="x", padx=18)
+        self._clear_var = tk.BooleanVar(value=bool(self.app.config.get("clear_mode", False)))
+        self._check(fun_frame, "Clear / glass mode (transparent background)", self._clear_var, self._set_clear).pack(anchor="w")
         self._part_var = tk.BooleanVar(value=bool(self.app.config["particles"]))
         self._check(fun_frame, "Floating background particles", self._part_var, self._set_part).pack(anchor="w")
         self._aurora_var = tk.BooleanVar(value=bool(self.app.config.get("aurora", False)))
@@ -2184,6 +3195,64 @@ class SettingsWindow(tk.Toplevel):
                   activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=6,
                   font=self.LBL_FONT, cursor="hand2").pack(side="left", padx=(0, 8))
         tk.Button(act_frame, text="Add app\u2026", command=self.app.add_app,
+                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2a3150",
+                  activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=6,
+                  font=self.LBL_FONT, cursor="hand2").pack(side="left")
+
+        self._title("Usage insights")
+        ins_frame = tk.Frame(self._inner, bg=self.SET_BG)
+        ins_frame.pack(fill="x", padx=18)
+        tk.Label(ins_frame, text="See which apps you launch most.",
+                 bg=self.SET_BG, fg=self.SET_MUTED, font=self.LBL_FONT).pack(anchor="w", pady=(0, 6))
+        tk.Button(ins_frame, text="View usage insights", command=lambda: InsightsWindow(self.app),
+                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2a3150",
+                  activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=6,
+                  font=self.LBL_FONT, cursor="hand2").pack(anchor="w")
+
+        self._title("Cloud sync")
+        sync_frame = tk.Frame(self._inner, bg=self.SET_BG)
+        sync_frame.pack(fill="x", padx=18)
+        signed_in = bool(AppNet.load_session())
+        if signed_in:
+            tk.Label(sync_frame,
+                    text="Syncs favorites, categories, the quick-launch dock, schedules\n"
+                         "and your look/feel settings to your account (not app icons/shortcuts\n"
+                         "themselves, since those are specific to each PC).",
+                    bg=self.SET_BG, fg=self.SET_MUTED, font=self.LBL_FONT, justify="left").pack(anchor="w", pady=(0, 6))
+            self._cloud_var = tk.BooleanVar(value=bool(self.app.config.get("cloud_sync")))
+            self._check(sync_frame, "Auto-pull on launch / push on close", self._cloud_var,
+                       self._set_cloud_sync).pack(anchor="w", pady=(0, 6))
+            sync_btns = tk.Frame(sync_frame, bg=self.SET_BG)
+            sync_btns.pack(anchor="w")
+            tk.Button(sync_btns, text="Push to cloud", command=lambda: self.app.push_to_cloud(),
+                      bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2a3150",
+                      activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=6,
+                      font=self.LBL_FONT, cursor="hand2").pack(side="left", padx=(0, 8))
+            tk.Button(sync_btns, text="Pull from cloud", command=lambda: self.app.pull_from_cloud(),
+                      bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2a3150",
+                      activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=6,
+                      font=self.LBL_FONT, cursor="hand2").pack(side="left")
+        else:
+            tk.Label(sync_frame, text="Sign in via Contacts to sync settings across your PCs.",
+                    bg=self.SET_BG, fg=self.SET_MUTED, font=self.LBL_FONT, justify="left").pack(anchor="w", pady=(0, 6))
+            tk.Button(sync_frame, text="Open Contacts", command=self.app.open_contacts,
+                      bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2a3150",
+                      activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=6,
+                      font=self.LBL_FONT, cursor="hand2").pack(anchor="w")
+
+        self._title("Backup & restore")
+        bak_frame = tk.Frame(self._inner, bg=self.SET_BG)
+        bak_frame.pack(fill="x", padx=18)
+        tk.Label(bak_frame, text="Save your settings to a file, or load them from one\n"
+                                 "(same scope as cloud sync - not app shortcuts themselves).",
+                bg=self.SET_BG, fg=self.SET_MUTED, font=self.LBL_FONT, justify="left").pack(anchor="w", pady=(0, 6))
+        bak_btns = tk.Frame(bak_frame, bg=self.SET_BG)
+        bak_btns.pack(anchor="w")
+        tk.Button(bak_btns, text="Export settings\u2026", command=self.app.export_settings,
+                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2a3150",
+                  activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=6,
+                  font=self.LBL_FONT, cursor="hand2").pack(side="left", padx=(0, 8))
+        tk.Button(bak_btns, text="Import settings\u2026", command=self.app.import_settings,
                   bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2a3150",
                   activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=6,
                   font=self.LBL_FONT, cursor="hand2").pack(side="left")
@@ -2349,6 +3418,9 @@ class SettingsWindow(tk.Toplevel):
     def _set_auto(self):
         self.app.set_config("auto_refresh", bool(self._auto_var.get()))
 
+    def _set_clear(self):
+        self.app.set_config("clear_mode", bool(self._clear_var.get()))
+
     def _set_part(self):
         self.app.set_config("particles", bool(self._part_var.get()))
 
@@ -2360,6 +3432,12 @@ class SettingsWindow(tk.Toplevel):
 
     def _set_tray(self):
         self.app.set_config("tray", bool(self._tray_var.get()))
+
+    def _set_autostart(self):
+        self.app.set_config("autostart", bool(self._autostart_var.get()))
+
+    def _set_cloud_sync(self):
+        self.app.set_config("cloud_sync", bool(self._cloud_var.get()))
 
     def _set_anim(self):
         self.app.set_config("card_anim", bool(self._anim_var.get()))
@@ -2387,6 +3465,55 @@ class SettingsWindow(tk.Toplevel):
             self.app.reset_config()
             self.destroy()
             SettingsWindow(self.app)
+
+
+class InsightsWindow(tk.Toplevel):
+    BG = "#161a26"
+    TEXT = "#e9ecf5"
+    MUTED = "#8b93a7"
+
+    def __init__(self, app):
+        super().__init__(app)
+        self.app = app
+        self.title("Usage insights")
+        self.configure(bg=self.BG)
+        self.resizable(False, False)
+        self.attributes("-topmost", True)
+
+        launches = {p: c for p, c in app._launches.items() if c > 0}
+        total = sum(launches.values())
+        names_by_path = {p: n for n, p, _ in app.items}
+        top = sorted(launches.items(), key=lambda kv: -kv[1])[:10]
+
+        tk.Label(self, text="Usage insights", bg=self.BG, fg=self.TEXT,
+                 font=tkfont.Font(family="Segoe UI", size=13, weight="bold")
+                 ).pack(anchor="w", padx=18, pady=(16, 4))
+        summary = (f"{total} total launch{'es' if total != 1 else ''} across "
+                  f"{len(launches)} app{'s' if len(launches) != 1 else ''}"
+                  if launches else "No launches recorded yet - use the launcher a bit first!")
+        tk.Label(self, text=summary, bg=self.BG, fg=self.MUTED, font=("Segoe UI", 9)
+                 ).pack(anchor="w", padx=18, pady=(0, 12))
+
+        row_h = 34
+        height = max(60, len(top) * row_h + 20)
+        canvas = tk.Canvas(self, bg=self.BG, highlightthickness=0, width=390, height=height)
+        canvas.pack(padx=18, pady=(0, 18))
+
+        if top:
+            max_count = top[0][1]
+            for i, (path, count) in enumerate(top):
+                name = names_by_path.get(path, os.path.basename(path))
+                if len(name) > 20:
+                    name = name[:19] + "…"
+                y = i * row_h + 8
+                canvas.create_text(0, y, anchor="nw", text=name, fill=self.TEXT, font=("Segoe UI", 9))
+                bar_w = max(4, int((count / max_count) * 170))
+                accent = app._app_colors.get(path) or accent_for(names_by_path.get(path, name))
+                canvas.create_rectangle(160, y + 1, 160 + bar_w, y + 15, fill=accent, outline="")
+                canvas.create_text(160 + bar_w + 8, y + 8, anchor="w", text=str(count),
+                                   fill=self.MUTED, font=("Segoe UI", 8))
+
+        self.geometry(f"426x{height + 130}")
 
 
 class SoundboardWindow(tk.Toplevel):
@@ -2912,10 +4039,7 @@ class AssistantWindow(tk.Toplevel):
                 builtin = BUILTIN_APPS[close[0]]
         if builtin:
             try:
-                if builtin.startswith("start "):
-                    os.system(builtin)
-                else:
-                    subprocess.Popen(builtin, shell=True)
+                run_hidden(builtin, shell=True)
                 return f"Opened {builtin.split(' ')[-1]} for you.", None
             except Exception as e:
                 return f"I couldn't open that: {e}", None
@@ -3059,13 +4183,13 @@ class AssistantWindow(tk.Toplevel):
         if messagebox.askyesno("AI Assistant",
                                "Shut down this PC in 10 seconds? (you can cancel later with 'shutdown /a')",
                                parent=self):
-            os.system("shutdown /s /t 10")
+            run_hidden(["shutdown", "/s", "/t", "10"])
 
     def _restart(self):
         if messagebox.askyesno("AI Assistant",
                                "Restart this PC in 10 seconds? (you can cancel later with 'shutdown /a')",
                                parent=self):
-            os.system("shutdown /r /t 10")
+            run_hidden(["shutdown", "/r", "/t", "10"])
 
     def _llm(self, text):
         key = (self.app.config.get("ai_api_key") or "").strip()
