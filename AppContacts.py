@@ -372,7 +372,7 @@ class ContactsWindow(tk.Toplevel):
                 self.bans_btn.pack(side="right", padx=(0, 8))
             else:
                 self.bans_btn.pack_forget()
-            if self.net_active and net_is_owner(self.net):
+            if self.net_active and net_can_manage_bans(self.net):
                 self.special_btn.pack(side="right", padx=(0, 8))
             else:
                 self.special_btn.pack_forget()
@@ -854,23 +854,30 @@ class ContactsWindow(tk.Toplevel):
         refresh()
 
     def open_special_menu(self):
-        # Double-guarded on top of the button only showing for the Owner in
-        # the first place - opening this window always re-checks, since the
-        # server is what actually enforces every action taken inside it.
-        if not (self.net_active and net_is_owner(self.net)):
-            messagebox.showwarning("Owner only", "You need to be signed in as the Owner to use this.",
+        # Double-guarded on top of the button only showing for the Owner or
+        # a Co-Owner in the first place - opening this window always
+        # re-checks, since the server is what actually enforces every action
+        # taken inside it.
+        if not (self.net_active and net_can_manage_bans(self.net)):
+            messagebox.showwarning("Owner or Co-Owner only",
+                                   "You need to be signed in as the Owner or a Co-Owner to use this.",
                                    parent=self)
             return
         SpecialMenuWindow(self, self.net, on_change=self._apply_net_friends)
 
 
 class SpecialMenuWindow(tk.Toplevel):
-    """Owner-only management panel: search for any account (including ones
-    you're not already friends with, and banned ones), then Kick, Ban/Unban,
-    or set their role (Trial Mod / Mod / Co-Owner / member). Everything here
-    is a thin UI over server endpoints that independently re-check the
-    caller is really the Owner - this window is convenience, not the actual
-    security boundary."""
+    """Owner- and Co-Owner-accessible management panel: search for any
+    account (including ones you're not already friends with, and banned
+    ones), then Kick, Ban/Unban, Mute/Unmute, or set their role (Trial Mod /
+    Mod / Co-Owner / member) - a Co-Owner has every capability here that the
+    Owner does. The one exception is View Log (the moderation history),
+    which stays Owner-only and simply doesn't appear for anyone else. The
+    Owner rank itself is never touched by any of this - it isn't a
+    grantable role, it's derived purely from OWNER_USERNAME, and the Owner
+    account can't be targeted by these actions at all. Everything here is a
+    thin UI over server endpoints that independently re-check the caller's
+    actual rank - this window is convenience, not the security boundary."""
 
     ROLE_LABELS = {
         "member": "Member",
@@ -903,9 +910,12 @@ class SpecialMenuWindow(tk.Toplevel):
         header_row.pack(fill="x", padx=14, pady=(14, 0))
         tk.Label(header_row, text="\u2b50 Special Menu", font=tkfont.Font(family="Segoe UI", size=15, weight="bold"),
                  bg=BG, fg=TEXT).pack(side="left")
-        tk.Button(header_row, text="View Log", command=self.open_mod_log, bg=CARD2, fg=TEXT,
-                  activebackground="#343c58", activeforeground="#ffffff", relief="flat", bd=0,
-                  padx=10, pady=4, font=("Segoe UI", 8, "bold"), cursor="hand2").pack(side="right")
+        # View Log stays Owner-only, unlike the rest of this menu - so it's
+        # the one control here that doesn't even show for a Co-Owner.
+        if net_is_owner(self.net):
+            tk.Button(header_row, text="View Log", command=self.open_mod_log, bg=CARD2, fg=TEXT,
+                      activebackground="#343c58", activeforeground="#ffffff", relief="flat", bd=0,
+                      padx=10, pady=4, font=("Segoe UI", 8, "bold"), cursor="hand2").pack(side="right")
         tk.Label(self, text="Find any account, then Kick, Ban, Mute, or set their role.",
                  font=("Segoe UI", 8), bg=BG, fg=MUTED, anchor="w").pack(fill="x", padx=14, pady=(2, 8))
 
@@ -978,6 +988,10 @@ class SpecialMenuWindow(tk.Toplevel):
         tk.Label(self, text="Included in the notice they get, and saved to the log below.",
                  font=("Segoe UI", 7), bg=BG, fg=MUTED, anchor="w").pack(fill="x", padx=14, pady=(2, 0))
 
+        # Role assignment is Owner- and Co-Owner-level, same as everything
+        # else in this menu (see set_role in server/main.py) - the Owner
+        # rank itself is never affected either way, since it's derived
+        # purely from OWNER_USERNAME and isn't a role that can be granted.
         role_row = tk.Frame(self, bg=BG)
         role_row.pack(fill="x", padx=14, pady=(6, 14))
         tk.Label(role_row, text="Set role:", font=("Segoe UI", 9), bg=BG, fg=MUTED).pack(side="left", padx=(0, 8))
@@ -1632,14 +1646,16 @@ class LoginWindow(tk.Toplevel):
         self.transient(app)
         self.grab_set()
         self._on_ready = on_ready
+        self.pending_username = None
 
         tk.Label(self, text="App Launcher Network", font=tkfont.Font(family="Segoe UI", size=16, weight="bold"),
                  bg=BG, fg=TEXT).pack(pady=(16, 2))
         tk.Label(self, text="Same server, same people, on any PC.",
                  font=("Segoe UI", 9), bg=BG, fg=MUTED).pack(pady=(0, 12))
 
-        form = tk.Frame(self, bg=BG)
-        form.pack(padx=22, pady=(0, 8))
+        self.form_frame = tk.Frame(self, bg=BG)
+        self.form_frame.pack(padx=22, pady=(0, 8))
+        form = self.form_frame
 
         tk.Label(form, text="Server URL", font=("Segoe UI", 9), bg=BG, fg=MUTED, anchor="w").pack(fill="x")
         self.url_var = tk.StringVar(value=(AppNet.load_session() or {}).get("url", DEFAULT_SERVER_URL))
@@ -1654,29 +1670,63 @@ class LoginWindow(tk.Toplevel):
         tk.Label(form, text="Password", font=("Segoe UI", 9), bg=BG, fg=MUTED, anchor="w").pack(fill="x")
         self.pass_var = tk.StringVar()
         tk.Entry(form, textvariable=self.pass_var, show="*", bg=CARD2, fg=TEXT, insertbackground=TEXT,
+                 relief="flat", bd=0, highlightthickness=0, font=("Segoe UI", 10), width=40).pack(fill="x", ipady=4, pady=(2, 10))
+
+        tk.Label(form, text="Email (only needed to create an account)", font=("Segoe UI", 9), bg=BG, fg=MUTED, anchor="w").pack(fill="x")
+        self.email_var = tk.StringVar()
+        tk.Entry(form, textvariable=self.email_var, bg=CARD2, fg=TEXT, insertbackground=TEXT,
                  relief="flat", bd=0, highlightthickness=0, font=("Segoe UI", 10), width=40).pack(fill="x", ipady=4, pady=(2, 2))
 
         self.hint = tk.Label(self, text="", font=("Segoe UI", 9), bg=BG, fg=RED, wraplength=340)
         self.hint.pack(pady=(6, 2))
 
-        row = tk.Frame(self, bg=BG)
-        row.pack(pady=(4, 16))
-        self.signin_btn = tk.Button(row, text="Sign in", command=self._login, bg=ACC, fg="#ffffff",
+        self.button_row = tk.Frame(self, bg=BG)
+        self.button_row.pack(pady=(4, 16))
+        self.signin_btn = tk.Button(self.button_row, text="Sign in", command=self._login, bg=ACC, fg="#ffffff",
                   activebackground=ACC, activeforeground="#ffffff", relief="flat", bd=0,
                   padx=18, pady=7, font=("Segoe UI", 10, "bold"), cursor="hand2")
         self.signin_btn.pack(side="left", padx=6)
-        self.create_btn = tk.Button(row, text="Create account", command=self._create_account, bg=CARD2, fg=TEXT,
+        self.create_btn = tk.Button(self.button_row, text="Create account", command=self._create_account, bg=CARD2, fg=TEXT,
                   activebackground="#343c58", activeforeground="#ffffff", relief="flat", bd=0,
                   padx=14, pady=7, font=("Segoe UI", 10), cursor="hand2")
         self.create_btn.pack(side="left", padx=6)
         self.pass_var.trace_add("write", lambda *_: self.hint.config(text=""))
 
+        # Verification step - a new account isn't usable until its emailed
+        # code is confirmed here, so this stays built but hidden (pack_forget)
+        # until registration or a blocked sign-in tells us to show it.
+        self.verify_frame = tk.Frame(self, bg=BG)
+        vform = tk.Frame(self.verify_frame, bg=BG)
+        vform.pack(padx=22, pady=(0, 8))
+        tk.Label(vform, text="Verification code", font=("Segoe UI", 9), bg=BG, fg=MUTED, anchor="w").pack(fill="x")
+        self.code_var = tk.StringVar()
+        tk.Entry(vform, textvariable=self.code_var, bg=CARD2, fg=TEXT, insertbackground=TEXT,
+                 relief="flat", bd=0, highlightthickness=0, font=("Segoe UI", 12), justify="center",
+                 width=40).pack(fill="x", ipady=4, pady=(2, 2))
+        self.code_var.trace_add("write", lambda *_: self.hint.config(text=""))
+
+        vrow = tk.Frame(self.verify_frame, bg=BG)
+        vrow.pack(pady=(10, 4))
+        self.verify_btn = tk.Button(vrow, text="Verify", command=self._verify, bg=ACC, fg="#ffffff",
+                  activebackground=ACC, activeforeground="#ffffff", relief="flat", bd=0,
+                  padx=18, pady=7, font=("Segoe UI", 10, "bold"), cursor="hand2")
+        self.verify_btn.pack(side="left", padx=6)
+        self.resend_btn = tk.Button(vrow, text="Resend code", command=self._resend, bg=CARD2, fg=TEXT,
+                  activebackground="#343c58", activeforeground="#ffffff", relief="flat", bd=0,
+                  padx=14, pady=7, font=("Segoe UI", 10), cursor="hand2")
+        self.resend_btn.pack(side="left", padx=6)
+        tk.Button(self.verify_frame, text="← Back", command=self._back_to_form, bg=BG, fg=MUTED,
+                  activebackground=BG, activeforeground=TEXT, relief="flat", bd=0,
+                  font=("Segoe UI", 9, "underline"), cursor="hand2").pack(pady=(0, 16))
+
     def _set_busy(self, busy):
         state = "disabled" if busy else "normal"
         self.signin_btn.config(state=state)
         self.create_btn.config(state=state)
+        self.verify_btn.config(state=state)
+        self.resend_btn.config(state=state)
 
-    def _do(self, fn):
+    def _do(self, fn, on_success=None):
         self.hint.config(fg=RED, text="")
         url = self.url_var.get().strip().rstrip("/")
         if not url or url in ("https://", "http://"):
@@ -1684,7 +1734,7 @@ class LoginWindow(tk.Toplevel):
             return
         net = AppNet.Net(url)
         self.hint.config(fg=MUTED,
-                         text="Signing in… free servers can take up to a minute "
+                         text="Working… free servers can take up to a minute "
                               "to wake up if nobody's used them in a while.")
         self._set_busy(True)
 
@@ -1703,13 +1753,22 @@ class LoginWindow(tk.Toplevel):
                 return
             self._set_busy(False)
             if err is not None:
+                if err.status == 428:
+                    # The account exists and the password's right, but the
+                    # email on file hasn't been confirmed yet - send the user
+                    # straight to the code step instead of just an error.
+                    self._show_verify_step(self.user_var.get().strip(), err.message)
+                    return
                 self.hint.config(fg=RED, text=err.message)
                 return
             self.hint.config(fg=RED, text="")
-            AppNet.save_session(url, net.token, me)
-            if self._on_ready:
-                self._on_ready()
-            self.destroy()
+            if on_success:
+                on_success(net, me)
+            else:
+                AppNet.save_session(url, net.token, me)
+                if self._on_ready:
+                    self._on_ready()
+                self.destroy()
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -1717,7 +1776,45 @@ class LoginWindow(tk.Toplevel):
         self._do(lambda n: n.login(self.user_var.get().strip(), self.pass_var.get()))
 
     def _create_account(self):
-        self._do(lambda n: n.register(self.user_var.get().strip(), self.pass_var.get()))
+        username = self.user_var.get().strip()
+        email = self.email_var.get().strip()
+        if not email or "@" not in email or "." not in email.rsplit("@", 1)[-1]:
+            self.hint.config(fg=RED, text="Enter a valid email address to create an account.")
+            return
+
+        def on_success(net, me):
+            self._show_verify_step(
+                username,
+                f"We sent a 6-digit code to {email}. Enter it below to finish creating your account.")
+
+        self._do(lambda n: n.register(username, self.pass_var.get(), email), on_success=on_success)
+
+    def _show_verify_step(self, username, message):
+        self.pending_username = username
+        self.code_var.set("")
+        self.form_frame.pack_forget()
+        self.button_row.pack_forget()
+        self.hint.config(fg=MUTED, text=message)
+        self.verify_frame.pack()
+
+    def _back_to_form(self):
+        self.verify_frame.pack_forget()
+        self.hint.config(fg=RED, text="")
+        self.form_frame.pack(padx=22, pady=(0, 8))
+        self.button_row.pack(pady=(4, 16))
+
+    def _verify(self):
+        code = self.code_var.get().strip()
+        if not code:
+            self.hint.config(fg=RED, text="Enter the code from your email.")
+            return
+        self._do(lambda n: n.verify_email(self.pending_username, code))
+
+    def _resend(self):
+        def on_success(net, me):
+            self.hint.config(fg=MUTED, text="A new code is on its way - check your email.")
+
+        self._do(lambda n: n.resend_code(self.pending_username), on_success=on_success)
 
 
 # ---------------- profile pictures ----------------

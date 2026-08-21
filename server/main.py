@@ -1,8 +1,11 @@
 import hashlib
 import json
 import os
+import re
 import secrets
+import smtplib
 import time
+from email.mime.text import MIMEText
 from typing import Any, Optional
 
 import psycopg2
@@ -103,8 +106,54 @@ def init_db():
     # 0 (or NULL, for rows from before this column existed) means "not
     # muted"; otherwise a unix timestamp the mute expires at.
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS muted_until DOUBLE PRECISION NOT NULL DEFAULT 0;")
+    # Email verification. email_verified defaults to TRUE so every account
+    # that already existed before this feature shipped keeps working exactly
+    # as before - only brand-new registrations get created with it FALSE and
+    # have to confirm a code before they can sign in.
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;")
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT TRUE;")
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS verify_code TEXT;")
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS verify_code_expires DOUBLE PRECISION NOT NULL DEFAULT 0;")
     conn.commit()
     conn.close()
+
+
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+# Gmail SMTP with an App Password is the default (matches the Owner's own
+# Gmail account), but any SMTP provider works - just set these on Render the
+# same way DATABASE_URL was set. If they're not set, registration still
+# works but the code is only logged server-side (visible in Render's Events
+# log), not emailed - useful for local testing, not for real use.
+SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "465"))
+SMTP_USER = os.environ.get("SMTP_USER")
+SMTP_PASS = os.environ.get("SMTP_PASS")
+SMTP_FROM = os.environ.get("SMTP_FROM") or SMTP_USER
+
+
+def send_verification_email(to_email: str, code: str, username: str):
+    if not (SMTP_USER and SMTP_PASS):
+        print(f"[email] SMTP not configured - verification code for {username} <{to_email}> is {code}")
+        return
+    msg = MIMEText(
+        f"Hi {username},\n\n"
+        f"Your App Launcher verification code is: {code}\n\n"
+        f"Enter this code in App Launcher to finish creating your account. "
+        f"It expires in 15 minutes.\n\n"
+        f"If you didn't try to create an App Launcher account, you can safely ignore this email."
+    )
+    msg["Subject"] = "Your App Launcher verification code"
+    msg["From"] = SMTP_FROM
+    msg["To"] = to_email
+    try:
+        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=10) as s:
+            s.login(SMTP_USER, SMTP_PASS)
+            s.sendmail(SMTP_FROM, [to_email], msg.as_string())
+    except Exception as e:
+        # Don't let a flaky mail provider break registration - the account
+        # still exists, the user (or a resend) just needs SMTP working.
+        print(f"[email] Failed to send verification email to {to_email}: {e}")
 
 
 def add_mod_log(actor: Any, action: str, target: Any, reason: Optional[str] = None):
@@ -305,11 +354,17 @@ def add_notice(user_id: str, text: str):
 class RegisterIn(BaseModel):
     username: str
     password: str
+    email: str
 
 
 class LoginIn(BaseModel):
     username: str
     password: str
+
+
+class VerifyEmailIn(BaseModel):
+    username: str
+    code: str
 
 
 class UsernameIn(BaseModel):
@@ -389,28 +444,90 @@ def register(body: RegisterIn, x_client_version: Optional[str] = Header(None)):
     check_client_version(x_client_version)
     username = (body.username or "").strip()
     password = body.password or ""
+    email = (body.email or "").strip()
     if not (3 <= len(username) <= 24) or not username.replace("_", "").isalnum():
         raise HTTPException(400, "Username must be 3-24 letters/numbers/underscores.")
     if len(password) < 4:
         raise HTTPException(400, "Password must be at least 4 characters.")
+    if not EMAIL_RE.match(email):
+        raise HTTPException(400, "Enter a valid email address.")
     if get_user_by_username(username) is not None:
         raise HTTPException(400, "That username is already taken.")
     user_id = new_id()
     salt = secrets.token_hex(8)
     conn = db()
+    # Only block on emails already confirmed by another account - two
+    # abandoned, never-verified signups sharing an email is a harmless edge
+    # case, not worth a hard uniqueness constraint.
+    taken = execute(
+        conn, "SELECT 1 FROM users WHERE LOWER(email) = LOWER(%s) AND email_verified = TRUE", (email,)
+    ).fetchone()
+    if taken:
+        conn.close()
+        raise HTTPException(400, "An account with that email already exists.")
     total = execute(conn, "SELECT COUNT(*) AS n FROM users").fetchone()["n"]
     is_owner = total == 0
+    code = f"{secrets.randbelow(1000000):06d}"
     execute(
         conn,
-        "INSERT INTO users (id, username, password_hash, salt, is_owner, banned, created) "
-        "VALUES (%s, %s, %s, %s, %s, FALSE, %s)",
-        (user_id, username, hash_password(password, salt), salt, is_owner, now()),
+        "INSERT INTO users (id, username, password_hash, salt, is_owner, banned, created, "
+        "email, email_verified, verify_code, verify_code_expires) "
+        "VALUES (%s, %s, %s, %s, %s, FALSE, %s, %s, FALSE, %s, %s)",
+        (user_id, username, hash_password(password, salt), salt, is_owner, now(),
+         email, code, now() + 15 * 60),
     )
     conn.commit()
     conn.close()
-    user = get_user(user_id)
-    token = make_session(user_id)
+    send_verification_email(email, code, username)
+    # No token yet - the account can't sign in until the code below is
+    # confirmed via /api/verify-email.
+    return {"pending_verification": True, "id": user_id, "username": username, "email": email}
+
+
+@app.post("/api/verify-email")
+def verify_email(body: VerifyEmailIn, x_client_version: Optional[str] = Header(None)):
+    check_client_version(x_client_version)
+    username = (body.username or "").strip()
+    code = (body.code or "").strip()
+    user = get_user_by_username(username)
+    if user is None:
+        raise HTTPException(400, "No account with that username.")
+    if user["email_verified"]:
+        # Already confirmed (e.g. a double-submit) - just sign them in.
+        token = make_session(user["id"])
+        return {**UserOut.json(user), "token": token}
+    if not code or (user.get("verify_code") or "") != code:
+        raise HTTPException(400, "That code isn't right. Check your email and try again.")
+    if (user.get("verify_code_expires") or 0) < now():
+        raise HTTPException(400, "That code has expired. Request a new one and try again.")
+    conn = db()
+    execute(conn, "UPDATE users SET email_verified = TRUE, verify_code = NULL WHERE id = %s", (user["id"],))
+    conn.commit()
+    conn.close()
+    user = get_user(user["id"])
+    token = make_session(user["id"])
     return {**UserOut.json(user), "token": token}
+
+
+@app.post("/api/resend-code")
+def resend_code(body: UsernameIn, x_client_version: Optional[str] = Header(None)):
+    check_client_version(x_client_version)
+    username = (body.username or "").strip()
+    user = get_user_by_username(username)
+    if user is None:
+        raise HTTPException(400, "No account with that username.")
+    if user["email_verified"]:
+        return {"ok": True, "already_verified": True}
+    if not user.get("email"):
+        raise HTTPException(400, "This account has no email on file.")
+    code = f"{secrets.randbelow(1000000):06d}"
+    conn = db()
+    execute(conn, "UPDATE users SET verify_code = %s, verify_code_expires = %s WHERE id = %s",
+            (code, now() + 15 * 60, user["id"]))
+    conn.commit()
+    conn.close()
+    send_verification_email(user["email"], code, user["username"])
+    return {"ok": True}
 
 
 @app.post("/api/login")
@@ -425,6 +542,12 @@ def login(body: LoginIn, x_client_version: Optional[str] = Header(None)):
         raise HTTPException(403, "You have been banned.")
     if user["password_hash"] != hash_password(password, user["salt"]):
         raise HTTPException(400, "Wrong password.")
+    if not user["email_verified"]:
+        # 428 ("Precondition Required") rather than a generic 400/403, so the
+        # client can tell "wrong password" apart from "right password, but
+        # this account still needs its email confirmed" and route the user
+        # straight to the code-entry step instead of just showing an error.
+        raise HTTPException(428, "Confirm your email before signing in - check your inbox for the code, or request a new one.")
     token = make_session(user["id"])
     return {**UserOut.json(user), "token": token}
 
@@ -617,11 +740,14 @@ def list_bans(user: Any = Depends(auth)):
 
 @app.post("/api/roles/set")
 def set_role(body: RoleIn, user: Any = Depends(auth)):
-    # Owner-only: nobody else can grant or revoke any role, ever - so no
-    # role can be used to chain into granting more roles. This replaces the
-    # old /api/admin/grant and /api/admin/revoke endpoints with a single
+    # Co-Owner and up - same tier as the rest of the Special Menu. The Owner
+    # rank itself is never affected: it isn't in VALID_ROLES, it's derived
+    # purely from OWNER_USERNAME, and a role change can never be applied to
+    # the Owner account (blocked below) - so even a Co-Owner granting roles
+    # can never create a second Owner or touch the real one. This replaces
+    # the old /api/admin/grant and /api/admin/revoke endpoints with a single
     # endpoint that covers the whole Trial Mod / Mod / Co-Owner ladder.
-    owner_guard(user)
+    banlist_guard(user)
     role = (body.role or "").strip().lower()
     if role not in VALID_ROLES:
         raise HTTPException(400, f"Role must be one of: {', '.join(VALID_ROLES)}.")
@@ -648,10 +774,12 @@ def set_role(body: RoleIn, user: Any = Depends(auth)):
 
 @app.post("/api/owner/search")
 def owner_search(body: UsernameIn, user: Any = Depends(auth)):
-    # Owner-only lookup that, unlike /api/users/search, isn't limited to
-    # friends and includes banned accounts - this is what powers the
-    # special menu's "find people" box.
-    owner_guard(user)
+    # Co-Owner and up (same tier as the ban list) - unlike /api/users/search,
+    # isn't limited to friends and includes banned accounts. This is what
+    # powers the special menu's "find people" box, so a Co-Owner needs it to
+    # use the rest of that menu (Kick/Ban/Mute) on someone who isn't already
+    # a friend. Role changes stay Owner-only regardless - see set_role below.
+    banlist_guard(user)
     q = (body.username or "").strip()
     if not q:
         return []
@@ -677,9 +805,10 @@ def owner_search(body: UsernameIn, user: Any = Depends(auth)):
 
 @app.get("/api/owner/modlog")
 def owner_modlog(user: Any = Depends(auth)):
-    # Owner-only: a running history of kicks/bans/unbans/role changes, most
-    # recent first, so the Owner can review what's happened without having
-    # to remember it all. Capped at the last 200 entries.
+    # Owner-only, unlike the rest of the Special Menu: a running history of
+    # kicks/bans/unbans/role changes, most recent first, so the Owner can
+    # review what's happened without having to remember it all. Capped at
+    # the last 200 entries.
     owner_guard(user)
     conn = db()
     rows = execute(

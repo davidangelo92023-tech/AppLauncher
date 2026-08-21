@@ -132,6 +132,30 @@ and `AppFriends.exe` should still be fine to use on their own.
 
 ## What's new
 
+- **Special Menu now open to Co-Owner too** - the ⭐ Special Menu button (find
+  any account, then Kick/Ban/Mute/set role) now shows for Co-Owner accounts
+  as well as the Owner. A Co-Owner has every capability in this menu that
+  the Owner does - including setting someone's role - with one exception:
+  View Log (the moderation history) stays Owner-only and simply doesn't
+  appear for anyone else. The Owner rank itself is never at risk either
+  way - it isn't a grantable role, it's tied to one specific account, and
+  that account can't be targeted by Kick/Ban/role changes at all.
+- **Email verification at sign-up** - creating a new account now asks for an
+  email address too. After you click "Create account", the app sends a
+  6-digit code to that email and shows a code-entry step - the account can't
+  sign in until the right code is entered (codes expire after 15 minutes,
+  with a "Resend code" option if it doesn't arrive in time). This only
+  happens once, at sign-up - after that, signing in is still just
+  username + password like before. Accounts created before this feature
+  shipped are unaffected and never need to verify anything. Needs
+  `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS` set as environment
+  variables on Render (same place `DATABASE_URL` was added) or codes are
+  only logged server-side instead of emailed. For Gmail: turn on 2-Step
+  Verification on the sending account, generate an App Password at
+  https://myaccount.google.com/apppasswords, and use that (not your normal
+  Gmail password) as `SMTP_PASS`, with `SMTP_USER` set to the full Gmail
+  address - `SMTP_HOST`/`SMTP_PORT` already default to Gmail's
+  (`smtp.gmail.com` / `465`) so you can leave those two unset.
 - **Minesweeper** - a ninth game in the Games window: classic 9x9, 10-mine
   board. Left-click to clear a cell (the first click is never a mine),
   right-click to flag one you think is dangerous. Clearing every non-mine

@@ -12,7 +12,7 @@ CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 # predate a security fix. Bump this together with the root VERSION file and
 # server/main.py's MIN_CLIENT_VERSION whenever you push a fix that must not
 # keep running on older clients.
-CLIENT_VERSION = "1.4.2"
+CLIENT_VERSION = "1.4.4"
 
 SESSION_KEYS = ("net_url", "net_token", "net_id", "net_username", "net_owner", "net_admin", "net_role")
 
@@ -122,19 +122,20 @@ class Net:
         except Exception as e:
             raise NetError(str(e), None)
 
-    def register(self, username, password):
+    def register(self, username, password, email):
         # Free-tier servers spin down after 15 min idle and can take up to
         # a minute to wake back up on the first request - give this one a
         # much longer timeout than the routine calls below.
         # Client version rides on the X-Client-Version header (added to every
         # request in _req), so the server can gate this the same way it
         # gates every other call - no need to duplicate it in the body.
-        d = self._req("POST", "/api/register", {"username": username, "password": password}, timeout=60)
+        d = self._req("POST", "/api/register",
+                       {"username": username, "password": password, "email": email}, timeout=60)
+        # No token yet - the server won't issue one until the emailed code is
+        # confirmed via verify_email() below, so self.token stays None here.
         self.token = d.get("token")
-        self.me = {"id": d.get("id"), "username": d.get("username"),
-                  "is_owner": d.get("is_owner"), "is_admin": d.get("is_admin"),
-                  "role": d.get("role")}
-        return self.me
+        self.me = {"id": d.get("id"), "username": d.get("username")}
+        return d
 
     def login(self, username, password):
         d = self._req("POST", "/api/login", {"username": username, "password": password}, timeout=60)
@@ -143,6 +144,17 @@ class Net:
                   "is_owner": d.get("is_owner"), "is_admin": d.get("is_admin"),
                   "role": d.get("role")}
         return self.me
+
+    def verify_email(self, username, code):
+        d = self._req("POST", "/api/verify-email", {"username": username, "code": code}, timeout=60)
+        self.token = d.get("token")
+        self.me = {"id": d.get("id"), "username": d.get("username"),
+                  "is_owner": d.get("is_owner"), "is_admin": d.get("is_admin"),
+                  "role": d.get("role")}
+        return self.me
+
+    def resend_code(self, username):
+        return self._req("POST", "/api/resend-code", {"username": username}, timeout=60)
 
     def logout(self):
         try:
