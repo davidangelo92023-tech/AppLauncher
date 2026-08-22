@@ -869,17 +869,19 @@ class ContactsWindow(tk.Toplevel):
 class SpecialMenuWindow(tk.Toplevel):
     """Owner- and Co-Owner-accessible management panel: search for any
     account (including ones you're not already friends with, and banned
-    ones), then Kick, Ban/Unban (permanent or timed), Mute/Unmute, Warn
-    (notice + log entry, no restriction), Force sign-out (ends every active
-    session), Broadcast (a notice to every account), or set their role
-    (Trial Mod / Mod / Co-Owner / member) - a Co-Owner has every capability
-    here that the Owner does. The one exception is View Log (the moderation
-    history), which stays Owner-only and simply doesn't appear for anyone
-    else. The Owner rank itself is never touched by any of this - it isn't a
-    grantable role, it's derived purely from OWNER_USERNAME, and the Owner
-    account can't be targeted by these actions at all. Everything here is a
-    thin UI over server endpoints that independently re-check the caller's
-    actual rank - this window is convenience, not the security boundary."""
+    ones) - or click "All Accounts" to list literally everyone at once -
+    then Kick, Ban/Unban (permanent or timed), Mute/Unmute, Warn (notice +
+    log entry, no restriction), Force sign-out (ends every active session),
+    Broadcast (a notice to every account), or set their role (Trial Mod /
+    Mod / Co-Owner / member) - a Co-Owner has every capability here that the
+    Owner does. The one exception is View Log (the moderation history,
+    which now also records every new account signing up), which stays
+    Owner-only and simply doesn't appear for anyone else. The Owner rank
+    itself is never touched by any of this - it isn't a grantable role,
+    it's derived purely from OWNER_USERNAME, and the Owner account can't be
+    targeted by these actions at all. Everything here is a thin UI over
+    server endpoints that independently re-check the caller's actual rank -
+    this window is convenience, not the security boundary."""
 
     ROLE_LABELS = {
         "member": "Member",
@@ -921,7 +923,8 @@ class SpecialMenuWindow(tk.Toplevel):
         tk.Button(header_row, text="\U0001f4e2 Broadcast…", command=self.open_broadcast, bg=CARD2, fg=ACC,
                   activebackground="#343c58", activeforeground=ACC, relief="flat", bd=0,
                   padx=10, pady=4, font=("Segoe UI", 8, "bold"), cursor="hand2").pack(side="right", padx=(0, 6))
-        tk.Label(self, text="Find any account, then Kick, Ban, Mute, Warn, Force sign-out, or set their role.",
+        tk.Label(self, text="Find any account (or click All Accounts), then Kick, Ban, Mute, Warn, "
+                            "Force sign-out, or set their role.",
                  font=("Segoe UI", 8), bg=BG, fg=MUTED, anchor="w").pack(fill="x", padx=14, pady=(2, 8))
 
         search_row = tk.Frame(self, bg=BG)
@@ -935,6 +938,9 @@ class SpecialMenuWindow(tk.Toplevel):
         tk.Button(search_row, text="Find", command=self.search, bg=ACC, fg="#ffffff",
                   activebackground=ACC, activeforeground="#ffffff", relief="flat", bd=0,
                   padx=12, pady=6, font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="right")
+        tk.Button(search_row, text="\U0001f4cb All Accounts", command=self.list_all, bg=CARD2, fg=TEXT,
+                  activebackground="#343c58", activeforeground="#ffffff", relief="flat", bd=0,
+                  padx=10, pady=6, font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="right", padx=(0, 6))
 
         frame = tk.Frame(self, bg=BG)
         frame.pack(fill="both", expand=True, padx=14, pady=(10, 6))
@@ -1034,10 +1040,14 @@ class SpecialMenuWindow(tk.Toplevel):
                   self.warn_btn, self.force_btn):
             w.config(state=state)
 
+    def list_all(self):
+        # Same as searching, just with the box cleared - the server treats
+        # a blank query as "show every account" (see owner_search).
+        self.q_var.set("")
+        self.search()
+
     def search(self):
         q = (self.q_var.get() or "").strip()
-        if not q:
-            return
         try:
             self.results = self.net.search_any(q)
         except AppNet.NetError as e:
@@ -1046,7 +1056,8 @@ class SpecialMenuWindow(tk.Toplevel):
         self.lb.delete(0, "end")
         self._selected_row = None
         self._set_actions_enabled(False)
-        self.detail_lbl.config(text=f"{len(self.results)} result(s).")
+        self.detail_lbl.config(text=f"{len(self.results)} account(s)." if not q
+                               else f"{len(self.results)} result(s).")
         for r in self.results:
             tag = " [OWNER]" if r.get("is_owner") else (
                 f" [{self.ROLE_LABELS.get(r.get('role', 'member'), r.get('role'))}]"
@@ -1356,6 +1367,21 @@ class ModLogWindow(tk.Toplevel):
             txt.insert("end", "No moderation actions logged yet.")
         for e in entries:
             action = e.get("action", "")
+            ts = e.get("ts") or 0
+            try:
+                when = datetime.datetime.fromtimestamp(ts).strftime("%b %d, %I:%M %p")
+            except Exception:
+                when = ""
+            if action == "register":
+                # Actor and target are the same account (nobody moderated
+                # anything - they just signed up), so this reads once
+                # instead of repeating the username as its own target.
+                txt.insert("end", e.get("actor", "?"), "who")
+                txt.insert("end", " created an account")
+                if when:
+                    txt.insert("end", f"  \u00b7  {when}", "time")
+                txt.insert("end", "\n\n")
+                continue
             if action.startswith("role:"):
                 role = action.split(":", 1)[1]
                 label = f"Set role to {role.replace('_', '-').title()}"
@@ -1367,11 +1393,6 @@ class ModLogWindow(tk.Toplevel):
                 label = f"Banned for {mins} min"
             else:
                 label = self.ACTION_LABELS.get(action, action)
-            ts = e.get("ts") or 0
-            try:
-                when = datetime.datetime.fromtimestamp(ts).strftime("%b %d, %I:%M %p")
-            except Exception:
-                when = ""
             txt.insert("end", e.get("actor", "?"), "who")
             txt.insert("end", f" {label.lower()} ")
             txt.insert("end", e.get("target", "?"), "who")

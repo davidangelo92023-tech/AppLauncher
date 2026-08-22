@@ -517,6 +517,12 @@ def register(body: RegisterIn, x_client_version: Optional[str] = Header(None)):
     conn.commit()
     conn.close()
     send_verification_email(email, code, username)
+    # Logged the same way every other moderation action is, so the Owner
+    # can see new signups show up in View Log - actor and target are the
+    # same account here since nobody else did anything, they signed
+    # themselves up.
+    new_account = {"id": user_id, "username": username}
+    add_mod_log(new_account, "register", new_account, None)
     # No token yet - the account can't sign in until the code below is
     # confirmed via /api/verify-email.
     return {"pending_verification": True, "id": user_id, "username": username, "email": email}
@@ -894,14 +900,21 @@ def owner_search(body: UsernameIn, user: Any = Depends(auth)):
     # a friend. Role changes stay Owner-only regardless - see set_role below.
     banlist_guard(user)
     q = (body.username or "").strip()
-    if not q:
-        return []
     conn = db()
-    rows = execute(
-        conn,
-        "SELECT id, username, banned, is_admin, role, muted_until FROM users WHERE username ILIKE %s LIMIT 25",
-        (f"%{q}%",),
-    ).fetchall()
+    if q:
+        rows = execute(
+            conn,
+            "SELECT id, username, banned, is_admin, role, muted_until FROM users WHERE username ILIKE %s LIMIT 25",
+            (f"%{q}%",),
+        ).fetchall()
+    else:
+        # A blank query lists every account instead of nothing - this is
+        # what powers the Special Menu's "All Accounts" button. Capped well
+        # above any realistic friend-group size, just as a safety net.
+        rows = execute(
+            conn,
+            "SELECT id, username, banned, is_admin, role, muted_until FROM users ORDER BY username LIMIT 500",
+        ).fetchall()
     conn.close()
     return [
         {

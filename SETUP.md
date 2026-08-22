@@ -132,6 +132,13 @@ and `AppFriends.exe` should still be fine to use on their own.
 
 ## What's new
 
+- **New account sign-ups appear in View Log, plus an "All Accounts" list** -
+  every time someone creates an account, it now shows up in the Special
+  Menu's View Log (Owner-only) as "Created an account." Separately, a new
+  **📋 All Accounts** button next to the search box lists every account on
+  the server at once (up to 500), instead of only accounts matching a
+  search - useful for browsing everyone rather than looking someone up by
+  name. Same Co-Owner-and-up tier as the rest of the search box.
 - **Four new Special Menu tools** - Ban now has a length field (leave it
   blank for permanent, like before, or give it a number of minutes for a
   ban that lifts itself automatically). **Warn** sends someone a notice and

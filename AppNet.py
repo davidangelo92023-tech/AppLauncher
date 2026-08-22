@@ -12,7 +12,7 @@ CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 # predate a security fix. Bump this together with the root VERSION file and
 # server/main.py's MIN_CLIENT_VERSION whenever you push a fix that must not
 # keep running on older clients.
-CLIENT_VERSION = "1.4.5"
+CLIENT_VERSION = "1.4.6"
 
 SESSION_KEYS = ("net_url", "net_token", "net_id", "net_username", "net_owner", "net_admin", "net_role")
 
