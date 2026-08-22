@@ -869,11 +869,13 @@ class ContactsWindow(tk.Toplevel):
 class SpecialMenuWindow(tk.Toplevel):
     """Owner- and Co-Owner-accessible management panel: search for any
     account (including ones you're not already friends with, and banned
-    ones), then Kick, Ban/Unban, Mute/Unmute, or set their role (Trial Mod /
-    Mod / Co-Owner / member) - a Co-Owner has every capability here that the
-    Owner does. The one exception is View Log (the moderation history),
-    which stays Owner-only and simply doesn't appear for anyone else. The
-    Owner rank itself is never touched by any of this - it isn't a
+    ones), then Kick, Ban/Unban (permanent or timed), Mute/Unmute, Warn
+    (notice + log entry, no restriction), Force sign-out (ends every active
+    session), Broadcast (a notice to every account), or set their role
+    (Trial Mod / Mod / Co-Owner / member) - a Co-Owner has every capability
+    here that the Owner does. The one exception is View Log (the moderation
+    history), which stays Owner-only and simply doesn't appear for anyone
+    else. The Owner rank itself is never touched by any of this - it isn't a
     grantable role, it's derived purely from OWNER_USERNAME, and the Owner
     account can't be targeted by these actions at all. Everything here is a
     thin UI over server endpoints that independently re-check the caller's
@@ -898,8 +900,8 @@ class SpecialMenuWindow(tk.Toplevel):
         self.on_change = on_change
         self.title("Special Menu")
         self.configure(bg=BG)
-        self.geometry("460x660")
-        self.minsize(420, 520)
+        self.geometry("460x780")
+        self.minsize(420, 600)
         self.transient(app)
         self.results = []
         self._selected_row = None
@@ -916,7 +918,10 @@ class SpecialMenuWindow(tk.Toplevel):
             tk.Button(header_row, text="View Log", command=self.open_mod_log, bg=CARD2, fg=TEXT,
                       activebackground="#343c58", activeforeground="#ffffff", relief="flat", bd=0,
                       padx=10, pady=4, font=("Segoe UI", 8, "bold"), cursor="hand2").pack(side="right")
-        tk.Label(self, text="Find any account, then Kick, Ban, Mute, or set their role.",
+        tk.Button(header_row, text="\U0001f4e2 Broadcast…", command=self.open_broadcast, bg=CARD2, fg=ACC,
+                  activebackground="#343c58", activeforeground=ACC, relief="flat", bd=0,
+                  padx=10, pady=4, font=("Segoe UI", 8, "bold"), cursor="hand2").pack(side="right", padx=(0, 6))
+        tk.Label(self, text="Find any account, then Kick, Ban, Mute, Warn, Force sign-out, or set their role.",
                  font=("Segoe UI", 8), bg=BG, fg=MUTED, anchor="w").pack(fill="x", padx=14, pady=(2, 8))
 
         search_row = tk.Frame(self, bg=BG)
@@ -962,6 +967,17 @@ class SpecialMenuWindow(tk.Toplevel):
         self.unban_btn = b(actions, "Unban", self.do_unban, GREEN, "#0d1220")
         self.unban_btn.pack(side="left")
 
+        ban_row = tk.Frame(self, bg=BG)
+        ban_row.pack(fill="x", padx=14, pady=(4, 0))
+        tk.Label(ban_row, text="Ban length:", font=("Segoe UI", 9), bg=BG, fg=MUTED).pack(side="left", padx=(0, 8))
+        self.ban_min_var = tk.StringVar(value="")
+        ban_entry = tk.Entry(ban_row, textvariable=self.ban_min_var, width=6, bg=CARD2, fg=TEXT,
+                             insertbackground=TEXT, relief="flat", bd=0, highlightthickness=0,
+                             font=("Segoe UI", 9), justify="center")
+        ban_entry.pack(side="left", ipady=4)
+        tk.Label(ban_row, text="min (blank = permanent)", font=("Segoe UI", 9), bg=BG, fg=MUTED).pack(
+            side="left", padx=(4, 0))
+
         mute_row = tk.Frame(self, bg=BG)
         mute_row.pack(fill="x", padx=14, pady=(6, 0))
         self.mute_btn = b(mute_row, "Mute", self.do_mute, "#8a5a00", "#ffffff")
@@ -975,6 +991,13 @@ class SpecialMenuWindow(tk.Toplevel):
                               font=("Segoe UI", 9), justify="center")
         mute_entry.pack(side="left", ipady=4)
         tk.Label(mute_row, text="min", font=("Segoe UI", 9), bg=BG, fg=MUTED).pack(side="left", padx=(4, 0))
+
+        extra_row = tk.Frame(self, bg=BG)
+        extra_row.pack(fill="x", padx=14, pady=(6, 0))
+        self.warn_btn = b(extra_row, "Warn", self.do_warn, "#ffd166", "#0d1220")
+        self.warn_btn.pack(side="left", padx=(0, 6))
+        self.force_btn = b(extra_row, "Force sign-out", self.do_force_signout, "#5a3d99", "#ffffff")
+        self.force_btn.pack(side="left")
 
         reason_row = tk.Frame(self, bg=BG)
         reason_row.pack(fill="x", padx=14, pady=(6, 0))
@@ -1007,7 +1030,8 @@ class SpecialMenuWindow(tk.Toplevel):
 
     def _set_actions_enabled(self, enabled):
         state = "normal" if enabled else "disabled"
-        for w in (self.kick_btn, self.ban_btn, self.unban_btn, self.mute_btn, self.unmute_btn):
+        for w in (self.kick_btn, self.ban_btn, self.unban_btn, self.mute_btn, self.unmute_btn,
+                  self.warn_btn, self.force_btn):
             w.config(state=state)
 
     def search(self):
@@ -1094,14 +1118,34 @@ class SpecialMenuWindow(tk.Toplevel):
         self.reason_var.set("")
         self._after_change(r["username"])
 
+    def _ban_minutes(self):
+        raw = (self.ban_min_var.get() or "").strip()
+        if not raw:
+            return 0  # blank = permanent
+        try:
+            minutes = int(raw)
+        except ValueError:
+            messagebox.showinfo("Ban length", "Enter a whole number of minutes, or leave it blank for permanent.",
+                                parent=self)
+            return None
+        if minutes < 1:
+            messagebox.showinfo("Ban length", "Duration must be at least 1 minute, or leave it blank for permanent.",
+                                parent=self)
+            return None
+        return minutes
+
     def do_ban(self):
         r = self._selected_or_warn()
         if not r:
             return
-        if not messagebox.askyesno("Ban", f"Ban {r['username']}?", parent=self):
+        minutes = self._ban_minutes()
+        if minutes is None:
+            return
+        label = f"for {minutes} minute(s)" if minutes else "permanently"
+        if not messagebox.askyesno("Ban", f"Ban {r['username']} {label}?", parent=self):
             return
         try:
-            self.net.ban(r["id"], self._reason())
+            self.net.ban(r["id"], minutes, self._reason())
         except AppNet.NetError as e:
             messagebox.showwarning("Couldn't ban", e.message, parent=self)
             return
@@ -1177,6 +1221,41 @@ class SpecialMenuWindow(tk.Toplevel):
         self.reason_var.set("")
         self._after_change(r["username"])
 
+    def do_warn(self):
+        r = self._selected_or_warn()
+        if not r:
+            return
+        reason = self._reason()
+        if not reason:
+            messagebox.showinfo("Reason needed",
+                                "Enter a reason before warning - it's included in the notice they get.",
+                                parent=self)
+            return
+        if not messagebox.askyesno("Warn", f"Warn {r['username']}?", parent=self):
+            return
+        try:
+            self.net.warn(r["id"], reason)
+        except AppNet.NetError as e:
+            messagebox.showwarning("Couldn't warn", e.message, parent=self)
+            return
+        self.reason_var.set("")
+        self._after_change(r["username"])
+
+    def do_force_signout(self):
+        r = self._selected_or_warn()
+        if not r:
+            return
+        if not messagebox.askyesno("Force sign-out", f"Sign {r['username']} out of every device they're on?",
+                                   parent=self):
+            return
+        try:
+            self.net.force_signout(r["id"], self._reason())
+        except AppNet.NetError as e:
+            messagebox.showwarning("Couldn't sign them out", e.message, parent=self)
+            return
+        self.reason_var.set("")
+        self._after_change(r["username"])
+
     def open_mod_log(self):
         try:
             entries = self.net.mod_log()
@@ -1185,6 +1264,53 @@ class SpecialMenuWindow(tk.Toplevel):
             return
         ModLogWindow(self, entries)
 
+    def open_broadcast(self):
+        win = tk.Toplevel(self)
+        win.title("Broadcast announcement")
+        win.configure(bg=BG)
+        win.geometry("380x240")
+        win.resizable(False, False)
+        win.transient(self)
+        win.grab_set()
+
+        tk.Label(win, text="\U0001f4e2 Send to everyone",
+                 font=tkfont.Font(family="Segoe UI", size=13, weight="bold"),
+                 bg=BG, fg=TEXT).pack(pady=(14, 2))
+        tk.Label(win, text="Every account gets this as a notice next time they open the app.",
+                 font=("Segoe UI", 8), bg=BG, fg=MUTED, wraplength=340).pack(pady=(0, 8))
+
+        txt = tk.Text(win, bg=CARD2, fg=TEXT, insertbackground=TEXT, relief="flat", bd=0,
+                     highlightthickness=0, font=("Segoe UI", 10), height=4, wrap="word")
+        txt.pack(fill="both", expand=True, padx=14)
+        txt.focus_set()
+
+        hint = tk.Label(win, text="", font=("Segoe UI", 8), bg=BG, fg=RED, wraplength=340)
+        hint.pack(pady=(4, 0))
+
+        def send():
+            message = txt.get("1.0", "end").strip()
+            if not message:
+                hint.config(text="Enter a message first.")
+                return
+            if not messagebox.askyesno("Broadcast", "Send this to every account on the server?", parent=win):
+                return
+            try:
+                result = self.net.broadcast(message)
+            except AppNet.NetError as e:
+                hint.config(text=e.message)
+                return
+            messagebox.showinfo("Sent", f"Sent to {result.get('recipients', '?')} account(s).", parent=win)
+            win.destroy()
+
+        row = tk.Frame(win, bg=BG)
+        row.pack(pady=(8, 14))
+        tk.Button(row, text="Cancel", command=win.destroy, bg=CARD2, fg=TEXT,
+                  activebackground="#343c58", activeforeground="#ffffff", relief="flat", bd=0,
+                  padx=14, pady=6, font=("Segoe UI", 9), cursor="hand2").pack(side="left", padx=4)
+        tk.Button(row, text="Send", command=send, bg=ACC, fg="#ffffff",
+                  activebackground=ACC, activeforeground="#ffffff", relief="flat", bd=0,
+                  padx=14, pady=6, font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="left", padx=4)
+
 
 class ModLogWindow(tk.Toplevel):
     """Read-only view of the moderation history (kicks/bans/unbans/role
@@ -1192,9 +1318,12 @@ class ModLogWindow(tk.Toplevel):
 
     ACTION_LABELS = {
         "kick": "Kicked",
-        "ban": "Banned",
+        "ban": "Banned permanently",
         "unban": "Unbanned",
         "unmute": "Unmuted",
+        "force_signout": "Force signed out",
+        "warn": "Warned",
+        "broadcast": "Sent an announcement to",
     }
 
     def __init__(self, app, entries):
@@ -1233,6 +1362,9 @@ class ModLogWindow(tk.Toplevel):
             elif action.startswith("mute:"):
                 mins = action.split(":", 1)[1]
                 label = f"Muted for {mins} min"
+            elif action.startswith("ban:"):
+                mins = action.split(":", 1)[1]
+                label = f"Banned for {mins} min"
             else:
                 label = self.ACTION_LABELS.get(action, action)
             ts = e.get("ts") or 0
@@ -1246,7 +1378,11 @@ class ModLogWindow(tk.Toplevel):
             if when:
                 txt.insert("end", f"  \u00b7  {when}", "time")
             if e.get("reason"):
-                txt.insert("end", f"\n    Reason: {e['reason']}", "reason")
+                # A broadcast's "reason" is really the announcement text
+                # itself - labeled differently so it doesn't read like an
+                # excuse for a moderation action.
+                tag_label = "Message" if action == "broadcast" else "Reason"
+                txt.insert("end", f"\n    {tag_label}: {e['reason']}", "reason")
             txt.insert("end", "\n\n")
         txt.config(state="disabled")
 
@@ -1384,7 +1520,9 @@ class ChatWindow(tk.Toplevel):
         action = "Kick" if kick else "Ban"
         if not messagebox.askyesno(action, f"{action} {name}?\n\n"
                                            f"They will be removed from your network."
-                                           + ("" if kick else " and blocked from being added again."),
+                                           + ("" if kick else " and blocked from being added again, "
+                                                              "permanently. For a timed ban, use the "
+                                                              "Special Menu instead."),
                                    parent=self):
             return
         if self.net:

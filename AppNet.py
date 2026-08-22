@@ -12,7 +12,7 @@ CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 # predate a security fix. Bump this together with the root VERSION file and
 # server/main.py's MIN_CLIENT_VERSION whenever you push a fix that must not
 # keep running on older clients.
-CLIENT_VERSION = "1.4.4"
+CLIENT_VERSION = "1.4.5"
 
 SESSION_KEYS = ("net_url", "net_token", "net_id", "net_username", "net_owner", "net_admin", "net_role")
 
@@ -180,8 +180,9 @@ class Net:
     def kick(self, user_id, reason=None):
         return self._req("POST", "/api/friends/kick", {"id": user_id, "reason": reason})
 
-    def ban(self, user_id, reason=None):
-        return self._req("POST", "/api/ban", {"id": user_id, "reason": reason})
+    def ban(self, user_id, minutes=0, reason=None):
+        # minutes <= 0 means a permanent ban, same as before this existed.
+        return self._req("POST", "/api/ban", {"id": user_id, "minutes": minutes, "reason": reason})
 
     def unban(self, user_id, reason=None):
         return self._req("POST", "/api/unban", {"id": user_id, "reason": reason})
@@ -198,9 +199,24 @@ class Net:
     def set_role(self, user_id, role, reason=None):
         return self._req("POST", "/api/roles/set", {"id": user_id, "role": role, "reason": reason})
 
+    def force_signout(self, user_id, reason=None):
+        # Ends every session the account is currently signed into, without
+        # kicking/banning/muting it.
+        return self._req("POST", "/api/force-signout", {"id": user_id, "reason": reason})
+
+    def warn(self, user_id, reason):
+        # A reason is required server-side - a warning with nothing said
+        # isn't useful to anyone.
+        return self._req("POST", "/api/warn", {"id": user_id, "reason": reason})
+
+    def broadcast(self, text):
+        # Co-Owner and up: sends one notice to every account on the server.
+        return self._req("POST", "/api/broadcast", {"text": text})
+
     def search_any(self, q):
-        # Owner-only lookup across every account (including banned ones),
-        # unlike search_users() which only covers non-banned strangers.
+        # Owner/Co-Owner lookup across every account (including banned
+        # ones), unlike search_users() which only covers non-banned
+        # strangers.
         return self._req("POST", "/api/owner/search", {"username": q})
 
     def mod_log(self):

@@ -132,6 +132,18 @@ and `AppFriends.exe` should still be fine to use on their own.
 
 ## What's new
 
+- **Four new Special Menu tools** - Ban now has a length field (leave it
+  blank for permanent, like before, or give it a number of minutes for a
+  ban that lifts itself automatically). **Warn** sends someone a notice and
+  logs it, with no restriction - a paper trail before escalating to
+  Mute/Kick/Ban (it requires a reason, since that's the whole point).
+  **Force sign-out** instantly logs an account out of every device it's
+  signed into, without kicking, banning, or muting it. **📢 Broadcast…** (top
+  of the menu) sends one message to every single account as a notice,
+  for things like "server restarting in 10 minutes." All four follow the
+  same tiers as everything else here - Warn/Force sign-out are Trial Mod
+  and up (same as Kick/Mute), Broadcast is Co-Owner and up (same as the
+  rest of the menu).
 - **Special Menu now open to Co-Owner too** - the ⭐ Special Menu button (find
   any account, then Kick/Ban/Mute/set role) now shows for Co-Owner accounts
   as well as the Owner. A Co-Owner has every capability in this menu that

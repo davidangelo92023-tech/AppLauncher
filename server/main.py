@@ -114,6 +114,28 @@ def init_db():
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT TRUE;")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS verify_code TEXT;")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS verify_code_expires DOUBLE PRECISION NOT NULL DEFAULT 0;")
+    # 0 means "permanent once banned" (the original behavior - stays banned
+    # until an explicit Unban); a nonzero value is a timestamp the ban
+    # expires at, for timed bans.
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_until DOUBLE PRECISION NOT NULL DEFAULT 0;")
+    conn.commit()
+    conn.close()
+
+
+def expire_stale_bans():
+    """Timed bans don't get their own background job - instead, every
+    authenticated request (via auth() below) sweeps the whole table for any
+    ban whose timer has run out and clears it. Cheap at this app's scale,
+    and it means every other query that reads the plain `banned` column
+    (friend search, the ban list, etc.) stays correct without each of them
+    needing to know about banned_until."""
+    conn = db()
+    execute(
+        conn,
+        "UPDATE users SET banned = FALSE, banned_until = 0 "
+        "WHERE banned = TRUE AND banned_until <> 0 AND banned_until < %s",
+        (now(),),
+    )
     conn.commit()
     conn.close()
 
@@ -204,6 +226,7 @@ def pair_key(a: str, b: str) -> str:
 def auth(authorization: str = Header(None), x_client_version: Optional[str] = Header(None)) -> Any:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(401, "Not signed in.")
+    expire_stale_bans()
     tok = authorization[7:].strip()
     if _version_tuple(x_client_version) < _version_tuple(MIN_CLIENT_VERSION):
         # Don't just refuse this one call - revoke the session outright so an
@@ -402,6 +425,21 @@ class MuteIn(BaseModel):
     reason: Optional[str] = None
 
 
+class BanIn(BaseModel):
+    id: str
+    minutes: Optional[int] = 0  # 0 or omitted = permanent, like before
+    reason: Optional[str] = None
+
+
+class WarnIn(BaseModel):
+    id: str
+    reason: str
+
+
+class BroadcastIn(BaseModel):
+    text: str
+
+
 class UserOut:
     @staticmethod
     def json(user):
@@ -533,6 +571,7 @@ def resend_code(body: UsernameIn, x_client_version: Optional[str] = Header(None)
 @app.post("/api/login")
 def login(body: LoginIn, x_client_version: Optional[str] = Header(None)):
     check_client_version(x_client_version)
+    expire_stale_bans()
     username = (body.username or "").strip()
     password = body.password or ""
     user = get_user_by_username(username)
@@ -648,7 +687,7 @@ def kick(body: TargetIn, user: Any = Depends(auth)):
 
 
 @app.post("/api/ban")
-def ban(body: TargetIn, user: Any = Depends(auth)):
+def ban(body: BanIn, user: Any = Depends(auth)):
     # Mod and up can ban, but protect_target still stops anyone from
     # banning the Owner or someone at/above their own rank.
     ban_guard(user)
@@ -658,8 +697,14 @@ def ban(body: TargetIn, user: Any = Depends(auth)):
     if target["id"] == user["id"]:
         raise HTTPException(400, "You can't ban yourself.")
     protect_target(user, target)
+    # minutes <= 0 (or omitted) means a permanent ban, same as before this
+    # feature existed - banned_until stays 0 and only an explicit Unban
+    # lifts it. A positive value expires on its own (see expire_stale_bans).
+    minutes = max(0, int(body.minutes or 0))
+    minutes = min(minutes, 365 * 24 * 60)  # cap at 1 year, just to be safe
+    until = now() + minutes * 60 if minutes > 0 else 0
     conn = db()
-    execute(conn, "UPDATE users SET banned = TRUE WHERE id = %s", (target["id"],))
+    execute(conn, "UPDATE users SET banned = TRUE, banned_until = %s WHERE id = %s", (until, target["id"]))
     conn.commit()
     conn.close()
     _clear_relationship(user["id"], target["id"])
@@ -667,8 +712,9 @@ def ban(body: TargetIn, user: Any = Depends(auth)):
     banner = "the Owner" if is_owner_user(user) else user_role(user).replace("_", "-").title()
     reason = (body.reason or "").strip()
     suffix = f" Reason: {reason}" if reason else ""
-    add_notice(target["id"], f"You have been banned by {banner} ({user['username']}).{suffix}")
-    add_mod_log(user, "ban", target, reason)
+    when = f" for {minutes} minute(s)" if until else ""
+    add_notice(target["id"], f"You have been banned by {banner} ({user['username']}){when}.{suffix}")
+    add_mod_log(user, f"ban:{minutes}" if until else "ban", target, reason)
     return {"ok": True}
 
 
@@ -679,12 +725,79 @@ def unban(body: TargetIn, user: Any = Depends(auth)):
     if target is None:
         raise HTTPException(404, "User not found.")
     conn = db()
-    execute(conn, "UPDATE users SET banned = FALSE WHERE id = %s", (target["id"],))
+    execute(conn, "UPDATE users SET banned = FALSE, banned_until = 0 WHERE id = %s", (target["id"],))
     conn.commit()
     conn.close()
     add_notice(target["id"], "Your ban has been lifted.")
     add_mod_log(user, "unban", target, (body.reason or "").strip())
     return {"ok": True}
+
+
+@app.post("/api/force-signout")
+def force_signout(body: TargetIn, user: Any = Depends(auth)):
+    # Same tier as Kick/Mute (Trial Mod and up). Doesn't kick (remove the
+    # relationship), ban, or mute the account - it just ends every session
+    # it's currently signed into, so it has to sign back in everywhere. The
+    # notice below is waiting for them the next time they do.
+    kick_guard(user)
+    target = get_user(body.id or "")
+    if target is None:
+        raise HTTPException(404, "User not found.")
+    protect_target(user, target)
+    conn = db()
+    execute(conn, "DELETE FROM tokens WHERE user_id = %s", (target["id"],))
+    conn.commit()
+    conn.close()
+    actor_label = "the Owner" if is_owner_user(user) else user_role(user).replace("_", "-").title()
+    reason = (body.reason or "").strip()
+    suffix = f" Reason: {reason}" if reason else ""
+    add_notice(target["id"], f"You were signed out of every device by {actor_label} ({user['username']}).{suffix}")
+    add_mod_log(user, "force_signout", target, reason)
+    return {"ok": True}
+
+
+@app.post("/api/warn")
+def warn(body: WarnIn, user: Any = Depends(auth)):
+    # Same tier as Kick/Mute (Trial Mod and up) - the lightest touch in the
+    # Special Menu. Doesn't restrict the account at all, just sends a
+    # notice and leaves a mod-log entry, so there's a paper trail before
+    # escalating to Mute/Kick/Ban.
+    kick_guard(user)
+    target = get_user(body.id or "")
+    if target is None:
+        raise HTTPException(404, "User not found.")
+    protect_target(user, target)
+    reason = (body.reason or "").strip()
+    if not reason:
+        raise HTTPException(400, "A warning needs a reason.")
+    actor_label = "the Owner" if is_owner_user(user) else user_role(user).replace("_", "-").title()
+    add_notice(target["id"], f"You were warned by {actor_label} ({user['username']}). Reason: {reason}")
+    add_mod_log(user, "warn", target, reason)
+    return {"ok": True}
+
+
+@app.post("/api/broadcast")
+def broadcast(body: BroadcastIn, user: Any = Depends(auth)):
+    # Co-Owner and up, same tier as the rest of the Special Menu (View Log
+    # is the one exception that stays Owner-only). Sends one notice to
+    # every account on the server - capped in length like a reason, and
+    # logged the same way everything else in this menu is.
+    banlist_guard(user)
+    text = (body.text or "").strip()
+    if not text:
+        raise HTTPException(400, "Enter a message to broadcast.")
+    text = text[:500]
+    conn = db()
+    rows = execute(conn, "SELECT id FROM users").fetchall()
+    ts = now()
+    sender = "the Owner" if is_owner_user(user) else user_role(user).replace("_", "-").title()
+    message = f"\U0001f4e2 Announcement from {sender} ({user['username']}): {text}"
+    for r in rows:
+        execute(conn, "INSERT INTO notices (user_id, text, ts) VALUES (%s, %s, %s)", (r["id"], message, ts))
+    conn.commit()
+    conn.close()
+    add_mod_log(user, "broadcast", {"id": "*", "username": "Everyone"}, text)
+    return {"ok": True, "recipients": len(rows)}
 
 
 @app.post("/api/mute")
