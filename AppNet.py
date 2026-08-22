@@ -12,7 +12,7 @@ CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 # predate a security fix. Bump this together with the root VERSION file and
 # server/main.py's MIN_CLIENT_VERSION whenever you push a fix that must not
 # keep running on older clients.
-CLIENT_VERSION = "1.4.6"
+CLIENT_VERSION = "2.0.0"
 
 SESSION_KEYS = ("net_url", "net_token", "net_id", "net_username", "net_owner", "net_admin", "net_role")
 
@@ -224,12 +224,46 @@ class Net:
         # whom, when, and why (if a reason was given).
         return self._req("GET", "/api/owner/modlog")
 
+    def set_note(self, user_id, note):
+        # Co-Owner and up: a private note on an account, visible only in
+        # the Special Menu - never shown to the account itself.
+        return self._req("POST", "/api/owner/note", {"id": user_id, "note": note})
+
+    def owner_stats(self):
+        # Co-Owner and up: total/banned/muted counts for the Special Menu.
+        return self._req("GET", "/api/owner/stats")
+
     def messages(self, with_user, after=0.0):
         q = urllib.parse.urlencode({"with_user": with_user, "after": float(after)})
         return self._req("GET", "/api/messages?" + q)
 
     def send(self, to, text):
         return self._req("POST", "/api/messages/send", {"to": to, "text": text})
+
+    def edit_message(self, message_id, text):
+        # Only the original sender can edit - the server checks this too,
+        # this is just so the UI doesn't need a round trip to find out.
+        return self._req("POST", "/api/messages/edit", {"id": message_id, "text": text})
+
+    def delete_message(self, message_id):
+        # Clears the message's text on the server for both sides - not
+        # reversible.
+        return self._req("POST", "/api/messages/delete", {"id": message_id})
+
+    def react(self, message_id, emoji):
+        # emoji="" clears your own reaction on that message.
+        return self._req("POST", "/api/messages/react", {"message_id": message_id, "emoji": emoji})
+
+    def set_typing(self, to):
+        # Fire-and-forget - call while composing a reply, throttled
+        # client-side so every keystroke doesn't hit the network.
+        return self._req("POST", "/api/typing", {"to": to})
+
+    def presence(self, with_user):
+        # Combined online/typing status for one conversation's header -
+        # polled alongside messages() every couple of seconds.
+        q = urllib.parse.urlencode({"with_user": with_user})
+        return self._req("GET", "/api/presence?" + q)
 
     def call(self, to, action):
         return self._req("POST", "/api/call", {"to": to, "action": action})

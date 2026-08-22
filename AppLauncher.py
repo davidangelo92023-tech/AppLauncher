@@ -62,15 +62,16 @@ THEMES = {
     "Sunset":   {"bg_top": (52, 26, 38),  "bg_bottom": (15, 10, 16), "glow": (255, 150, 82), "accent": "#ff9e58"},
     "Cyber":    {"bg_top": (22, 24, 54),  "bg_bottom": (10, 8, 24),  "glow": (0, 244, 208),  "accent": "#00f4d0"},
     "Mono":     {"bg_top": (33, 35, 41),  "bg_bottom": (13, 14, 17), "glow": (150, 158, 176),"accent": "#a5aebb"},
+    "Neon":     {"bg_top": (14, 8, 28),   "bg_bottom": (5, 3, 12),   "glow": (255, 0, 170),  "accent": "#00f0ff"},
 }
 
-ACCENT_SWATCHES = ["#6c8cff", "#a06cff", "#ff6cb2", "#4ade80",
-                   "#ffb454", "#38d2e6", "#ff6b6b", "#00f4d0"]
+ACCENT_SWATCHES = ["#00f0ff", "#ff2bd6", "#b026ff", "#39ff8c",
+                   "#ffea00", "#ff5f1f", "#ff2255", "#38d2e6"]
 
 ICON_SIZES = {"Small": 44, "Medium": 56, "Large": 72}
 
 DEFAULT_CONFIG = {
-    "theme": "Nebula",
+    "theme": "Neon",
     "custom_accent": None,
     "icon_size": 56,
     "click": "single",
@@ -82,7 +83,7 @@ DEFAULT_CONFIG = {
     "confetti": True,
     "party": False,
     "sound": False,
-    "aurora": False,
+    "aurora": True,
     "stats": True,
     "tray": False,
     "autostart": False,
@@ -123,17 +124,17 @@ DEFAULT_CONFIG = {
 }
 
 # ------- fixed palette (works with any accent) -------
-CARD_FILL_HEX = "#262c40"
-CARD_HOVER_HEX = "#313a55"
-CARD_BORDER_HEX = "#3b4470"
-SHADOW_HEX = "#0a0c12"
-SEARCH_FILL_HEX = "#1a1f30"
-BUTTON_FILL_HEX = "#2c3450"
-BUTTON_HOVER_HEX = "#38415f"
-TEXT_HEX = "#e9ecf5"
-MUTED_HEX = "#8b93a7"
-ACCENTS = ["#6c8cff", "#a06cff", "#ff6cb2", "#4ade80",
-           "#ffb454", "#38d2e6", "#ff6b6b", "#c084fc"]
+CARD_FILL_HEX = "#170f2e"
+CARD_HOVER_HEX = "#241849"
+CARD_BORDER_HEX = "#5b2fb8"
+SHADOW_HEX = "#040209"
+SEARCH_FILL_HEX = "#130b26"
+BUTTON_FILL_HEX = "#1d1240"
+BUTTON_HOVER_HEX = "#2e1c5c"
+TEXT_HEX = "#eaf2ff"
+MUTED_HEX = "#8f87c2"
+ACCENTS = ["#00f0ff", "#ff2bd6", "#b026ff", "#39ff8c",
+           "#ffea00", "#ff5f1f", "#ff2255", "#38d2e6"]
 
 # ------- geometry -------
 CARD_W = 178
@@ -564,20 +565,20 @@ def get_file_icon(path, size=56):
 def fallback_icon(size=56):
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle([2, 2, size - 3, size - 3], radius=14, fill="#3a4050", outline="#4b5468", width=2)
-    d.rounded_rectangle([size // 2 - 8, size // 4, size // 2 + 8, size // 4 + 16], radius=2, fill="#6c8cff")
-    d.polygon([(size // 2, size // 2), (size // 2 - 10, size // 2 + 16), (size // 2 + 10, size // 2 + 16)], fill="#6c8cff")
-    d.rounded_rectangle([size // 2 - 8, size // 2 + 22, size // 2 + 8, size // 2 + 34], radius=2, fill="#6c8cff")
+    d.rounded_rectangle([2, 2, size - 3, size - 3], radius=14, fill="#170f2e", outline="#00f0ff", width=2)
+    d.rounded_rectangle([size // 2 - 8, size // 4, size // 2 + 8, size // 4 + 16], radius=2, fill="#00f0ff")
+    d.polygon([(size // 2, size // 2), (size // 2 - 10, size // 2 + 16), (size // 2 + 10, size // 2 + 16)], fill="#00f0ff")
+    d.rounded_rectangle([size // 2 - 8, size // 2 + 22, size // 2 + 8, size // 2 + 34], radius=2, fill="#00f0ff")
     return ImageTk.PhotoImage(img)
 
 
 def make_tray_image():
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle([6, 6, 58, 58], radius=14, fill="#262c40")
-    d.rounded_rectangle([26, 14, 38, 26], radius=3, fill="#6c8cff")
-    d.polygon([(32, 28), (22, 46), (42, 46)], fill="#6c8cff")
-    d.rounded_rectangle([26, 50, 38, 53], radius=2, fill="#6c8cff")
+    d.rounded_rectangle([6, 6, 58, 58], radius=14, fill="#170f2e")
+    d.rounded_rectangle([26, 14, 38, 26], radius=3, fill="#00f0ff")
+    d.polygon([(32, 28), (22, 46), (42, 46)], fill="#00f0ff")
+    d.rounded_rectangle([26, 50, 38, 53], radius=2, fill="#00f0ff")
     return img
 
 
@@ -1665,7 +1666,7 @@ class AppLauncher(tk.Tk):
             cw = max(h, tw + 24)
             tag = f"chip{i}"
             base = self._accent() if active else BUTTON_FILL_HEX
-            fg = "#14182a" if active else self._text_color()
+            fg = "#0c0718" if active else self._text_color()
             self.cv.create_image(x + cw / 2, cy, image=self._pill_bg(cw, h, h // 2, base, False),
                                  tags=("chips", tag))
             self.cv.create_text(x + cw / 2, cy, anchor="center", text=label,
@@ -2050,7 +2051,7 @@ class AppLauncher(tk.Tk):
             self._round_rect(x1 - 38, y0 + 12, x1 - 12, y0 + 30, chip_r,
                              fill=chip, outline="", tags=(tag, "card"))
             self.cv.create_text(x1 - 25, y0 + 21, anchor="center",
-                                text="\u229e", font=self.font_sub, fill="#14182a",
+                                text="\u229e", font=self.font_sub, fill="#0c0718",
                                 tags=(tag, "card"))
 
         count = self._launches.get(path, 0)
@@ -2059,7 +2060,7 @@ class AppLauncher(tk.Tk):
             self._round_rect(x0 + 8, y0 + 8, x0 + 8 + 2 * br, y0 + 8 + 2 * br, br,
                              fill=self._accent(), outline="", tags=(tag, "card"))
             self.cv.create_text(x0 + 8 + br, y0 + 8 + br, anchor="center", text=str(count),
-                                font=self._badge_font, fill="#14182a", tags=(tag, "card"))
+                                font=self._badge_font, fill="#0c0718", tags=(tag, "card"))
 
     def _icon_for(self, path):
         custom = self._app_icons.get(path)
@@ -2210,7 +2211,7 @@ class AppLauncher(tk.Tk):
 
     def _on_context(self, event):
         idx = self._hit_card(event.x, event.y)
-        menu = tk.Menu(self.cv, tearoff=0, bg="#1d2130", fg=self._text_color(), bd=0,
+        menu = tk.Menu(self.cv, tearoff=0, bg="#170f2e", fg=self._text_color(), bd=0,
                        activebackground=BUTTON_HOVER_HEX, activeforeground="#ffffff")
         if idx is not None:
             name, path, is_dir = self.visible[idx]
@@ -2963,10 +2964,10 @@ class AppLauncher(tk.Tk):
 
 
 class SettingsWindow(tk.Toplevel):
-    SET_BG = "#161a26"
-    SET_CARD = "#1f2434"
-    SET_TEXT = "#e9ecf5"
-    SET_MUTED = "#8b93a7"
+    SET_BG = "#100a20"
+    SET_CARD = "#1d1240"
+    SET_TEXT = "#eaf2ff"
+    SET_MUTED = "#8f87c2"
     LBL_FONT = ("Segoe UI", 9)
 
     def __init__(self, app):
@@ -3040,7 +3041,7 @@ class SettingsWindow(tk.Toplevel):
             b.grid(row=0, column=i, padx=2, pady=3)
             self._swatches[color] = b
         tk.Button(acc_frame, text="\u25a0 Custom\u2026", command=self._pick_custom,
-                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2a3150",
+                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2c1f52",
                   activeforeground="#ffffff", relief="flat", bd=0, padx=8, pady=6,
                   font=self.LBL_FONT, cursor="hand2").grid(row=0, column=len(ACCENT_SWATCHES), padx=6, pady=3)
 
@@ -3167,11 +3168,11 @@ class SettingsWindow(tk.Toplevel):
         hov_btns = tk.Frame(hov_frame, bg=self.SET_BG)
         hov_btns.pack(anchor="w", pady=(4, 0))
         tk.Button(hov_btns, text="Card hover color\u2026", command=self._pick_hover,
-                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2a3150",
+                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2c1f52",
                   activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=6,
                   font=self.LBL_FONT, cursor="hand2").pack(side="left", padx=(0, 8))
         tk.Button(hov_btns, text="Reset", command=self._reset_hover,
-                  bg=self.SET_CARD, fg=self.SET_MUTED, activebackground="#2a3150",
+                  bg=self.SET_CARD, fg=self.SET_MUTED, activebackground="#2c1f52",
                   activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=6,
                   font=self.LBL_FONT, cursor="hand2").pack(side="left")
 
@@ -3232,11 +3233,11 @@ class SettingsWindow(tk.Toplevel):
         act_frame = tk.Frame(self._inner, bg=self.SET_BG)
         act_frame.pack(fill="x", padx=18)
         tk.Button(act_frame, text="Open apps folder", command=self.app.open_folder,
-                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2a3150",
+                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2c1f52",
                   activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=6,
                   font=self.LBL_FONT, cursor="hand2").pack(side="left", padx=(0, 8))
         tk.Button(act_frame, text="Add app\u2026", command=self.app.add_app,
-                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2a3150",
+                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2c1f52",
                   activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=6,
                   font=self.LBL_FONT, cursor="hand2").pack(side="left")
 
@@ -3246,7 +3247,7 @@ class SettingsWindow(tk.Toplevel):
         tk.Label(ins_frame, text="See which apps you launch most.",
                  bg=self.SET_BG, fg=self.SET_MUTED, font=self.LBL_FONT).pack(anchor="w", pady=(0, 6))
         tk.Button(ins_frame, text="View usage insights", command=lambda: InsightsWindow(self.app),
-                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2a3150",
+                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2c1f52",
                   activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=6,
                   font=self.LBL_FONT, cursor="hand2").pack(anchor="w")
 
@@ -3266,18 +3267,18 @@ class SettingsWindow(tk.Toplevel):
             sync_btns = tk.Frame(sync_frame, bg=self.SET_BG)
             sync_btns.pack(anchor="w")
             tk.Button(sync_btns, text="Push to cloud", command=lambda: self.app.push_to_cloud(),
-                      bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2a3150",
+                      bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2c1f52",
                       activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=6,
                       font=self.LBL_FONT, cursor="hand2").pack(side="left", padx=(0, 8))
             tk.Button(sync_btns, text="Pull from cloud", command=lambda: self.app.pull_from_cloud(),
-                      bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2a3150",
+                      bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2c1f52",
                       activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=6,
                       font=self.LBL_FONT, cursor="hand2").pack(side="left")
         else:
             tk.Label(sync_frame, text="Sign in via Contacts to sync settings across your PCs.",
                     bg=self.SET_BG, fg=self.SET_MUTED, font=self.LBL_FONT, justify="left").pack(anchor="w", pady=(0, 6))
             tk.Button(sync_frame, text="Open Contacts", command=self.app.open_contacts,
-                      bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2a3150",
+                      bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2c1f52",
                       activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=6,
                       font=self.LBL_FONT, cursor="hand2").pack(anchor="w")
 
@@ -3290,11 +3291,11 @@ class SettingsWindow(tk.Toplevel):
         bak_btns = tk.Frame(bak_frame, bg=self.SET_BG)
         bak_btns.pack(anchor="w")
         tk.Button(bak_btns, text="Export settings\u2026", command=self.app.export_settings,
-                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2a3150",
+                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2c1f52",
                   activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=6,
                   font=self.LBL_FONT, cursor="hand2").pack(side="left", padx=(0, 8))
         tk.Button(bak_btns, text="Import settings\u2026", command=self.app.import_settings,
-                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2a3150",
+                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2c1f52",
                   activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=6,
                   font=self.LBL_FONT, cursor="hand2").pack(side="left")
 
@@ -3308,7 +3309,7 @@ class SettingsWindow(tk.Toplevel):
         self._ai_key_entry = tk.Entry(ai_frame, textvariable=self._ai_key_var, show="*",
                                       bg=self.SET_CARD, fg=self.SET_TEXT,
                                       insertbackground=self.SET_TEXT, relief="flat", bd=0,
-                                      highlightthickness=1, highlightbackground="#333a55")
+                                      highlightthickness=1, highlightbackground="#4a2f8a")
         self._ai_key_entry.pack(fill="x", ipady=5, pady=(0, 4))
         self._ai_key_show_var = tk.BooleanVar()
         tk.Checkbutton(ai_frame, text="Show API key", variable=self._ai_key_show_var,
@@ -3321,17 +3322,17 @@ class SettingsWindow(tk.Toplevel):
         self._ai_url_var = tk.StringVar(value=self.app.config.get("ai_api_url", "https://api.openai.com/v1/chat/completions"))
         tk.Entry(ai_frame, textvariable=self._ai_url_var, bg=self.SET_CARD, fg=self.SET_TEXT,
                  insertbackground=self.SET_TEXT, relief="flat", bd=0,
-                 highlightthickness=1, highlightbackground="#333a55",
+                 highlightthickness=1, highlightbackground="#4a2f8a",
                  font=self.LBL_FONT).pack(fill="x", ipady=5, pady=(2, 6))
         tk.Label(ai_frame, text="Model", bg=self.SET_BG, fg=self.SET_MUTED,
                  font=self.LBL_FONT).pack(anchor="w")
         self._ai_model_var = tk.StringVar(value=self.app.config.get("ai_model", "gpt-4o-mini"))
         tk.Entry(ai_frame, textvariable=self._ai_model_var, bg=self.SET_CARD, fg=self.SET_TEXT,
                  insertbackground=self.SET_TEXT, relief="flat", bd=0,
-                 highlightthickness=1, highlightbackground="#333a55",
+                 highlightthickness=1, highlightbackground="#4a2f8a",
                  font=self.LBL_FONT).pack(fill="x", ipady=5, pady=(2, 6))
         tk.Button(ai_frame, text="Save AI settings", command=self._save_ai,
-                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2a3150",
+                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2c1f52",
                   activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=6,
                   font=self.LBL_FONT, cursor="hand2").pack(anchor="w")
 
@@ -3422,14 +3423,14 @@ class SettingsWindow(tk.Toplevel):
         tk.Label(row, text=label, bg=self.SET_BG, fg=self.SET_TEXT, font=self.LBL_FONT,
                  width=19, anchor="w").pack(side="left")
         cur = tk.Frame(row, bg=self._color_display(key, default), width=18, height=18,
-                       highlightthickness=1, highlightbackground="#333a55")
+                       highlightthickness=1, highlightbackground="#4a2f8a")
         cur.pack(side="left", padx=(0, 6))
         tk.Button(row, text="Pick\u2026", command=lambda k=key, d=default: self._pick_color(k, d),
-                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2a3150",
+                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2c1f52",
                   activeforeground="#ffffff", relief="flat", bd=0, padx=8, pady=2,
                   font=self.LBL_FONT, cursor="hand2").pack(side="left", padx=(0, 4))
         tk.Button(row, text="Reset", command=lambda k=key, d=default: self._reset_color(k, d),
-                  bg=self.SET_CARD, fg=self.SET_MUTED, activebackground="#2a3150",
+                  bg=self.SET_CARD, fg=self.SET_MUTED, activebackground="#2c1f52",
                   activeforeground="#ffffff", relief="flat", bd=0, padx=8, pady=2,
                   font=self.LBL_FONT, cursor="hand2").pack(side="left")
         self._color_swatches[key] = cur
@@ -3509,9 +3510,9 @@ class SettingsWindow(tk.Toplevel):
 
 
 class InsightsWindow(tk.Toplevel):
-    BG = "#161a26"
-    TEXT = "#e9ecf5"
-    MUTED = "#8b93a7"
+    BG = "#100a20"
+    TEXT = "#eaf2ff"
+    MUTED = "#8f87c2"
 
     def __init__(self, app):
         super().__init__(app)
@@ -3558,9 +3559,9 @@ class InsightsWindow(tk.Toplevel):
 
 
 class SoundboardWindow(tk.Toplevel):
-    SB_BG = "#161a26"
-    SB_CARD = "#1f2434"
-    SB_TEXT = "#e9ecf5"
+    SB_BG = "#100a20"
+    SB_CARD = "#1d1240"
+    SB_TEXT = "#eaf2ff"
 
     def __init__(self, app):
         super().__init__(app)
@@ -3581,10 +3582,10 @@ class SoundboardWindow(tk.Toplevel):
         self._ls_var = tk.StringVar(value=self.app.config.get("launch_sound") or "Coin")
         opts = ["None"] + list(SOUND_DEFS.keys())
         om = tk.OptionMenu(top, self._ls_var, *opts, command=self._set_ls)
-        om.config(bg=self.SB_CARD, fg=self.SB_TEXT, activebackground="#2a3150",
+        om.config(bg=self.SB_CARD, fg=self.SB_TEXT, activebackground="#2c1f52",
                   activeforeground="#ffffff", relief="flat", bd=0, highlightthickness=0,
                   font=("Segoe UI", 9), cursor="hand2")
-        om["menu"].config(bg=self.SB_CARD, fg=self.SB_TEXT, activebackground="#2a3150", bd=0)
+        om["menu"].config(bg=self.SB_CARD, fg=self.SB_TEXT, activebackground="#2c1f52", bd=0)
         om.pack(side="left", padx=(10, 0))
 
         self._en_var = tk.BooleanVar(value=bool(self.app.config["sound"]))
@@ -3604,7 +3605,7 @@ class SoundboardWindow(tk.Toplevel):
         music_row.pack(fill="x", padx=16)
         tk.Button(music_row, text="\U0001f3b5  Open Music player",
                   command=self.app.open_music,
-                  bg=self.SB_CARD, fg="#6c8cff", activebackground="#2a3150",
+                  bg=self.SB_CARD, fg="#00f0ff", activebackground="#2c1f52",
                   activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=9,
                   font=("Segoe UI", 10, "bold"), cursor="hand2").pack(fill="x")
 
@@ -3747,10 +3748,10 @@ def safe_eval(expr):
 
 
 class AssistantWindow(tk.Toplevel):
-    AS_BG = "#14182a"
-    AS_CARD = "#1f2434"
-    AS_TEXT = "#e9ecf5"
-    AS_MUTED = "#8b93a7"
+    AS_BG = "#0c0718"
+    AS_CARD = "#1d1240"
+    AS_TEXT = "#eaf2ff"
+    AS_MUTED = "#8f87c2"
 
     def __init__(self, app):
         super().__init__(app)
@@ -3780,7 +3781,7 @@ class AssistantWindow(tk.Toplevel):
         chat_wrap.pack(fill="both", expand=True, padx=14, pady=(8, 6))
         self.chat = tk.Text(chat_wrap, bg=self.AS_CARD, fg=self.AS_TEXT, relief="flat", bd=0,
                             font=("Segoe UI", 10), wrap="word", state="disabled",
-                            padx=10, pady=10, highlightthickness=1, highlightbackground="#2c3350",
+                            padx=10, pady=10, highlightthickness=1, highlightbackground="#4a2f8a",
                             selectbackground=self.app._accent())
         self.chat.pack(side="left", fill="both", expand=True)
         sb = tk.Scrollbar(chat_wrap, command=self.chat.yview, bg=self.AS_CARD,
@@ -3789,7 +3790,7 @@ class AssistantWindow(tk.Toplevel):
         self.chat.configure(yscrollcommand=sb.set)
         self.chat.tag_configure("you", foreground=self.app._accent(),
                                 font=("Segoe UI", 10, "bold"))
-        self.chat.tag_configure("ai", foreground="#9ad7ff")
+        self.chat.tag_configure("ai", foreground="#9df3ff")
         self.chat.tag_configure("err", foreground="#ff9aa2")
 
         chips = tk.Frame(self, bg=self.AS_BG)
@@ -3797,7 +3798,7 @@ class AssistantWindow(tk.Toplevel):
         for label in ("What apps do I have?", "Open apps folder", "What time is it?",
                       "System info", "Search the web for games", "Tell me a joke"):
             tk.Button(chips, text=label, command=lambda l=label: self._fill(l),
-                      bg=self.AS_CARD, fg=self.AS_TEXT, activebackground="#2a3150",
+                      bg=self.AS_CARD, fg=self.AS_TEXT, activebackground="#2c1f52",
                       activeforeground="#ffffff", relief="flat", bd=0, padx=8, pady=4,
                       font=("Segoe UI", 8), cursor="hand2").pack(side="left", padx=(0, 6))
 
@@ -3805,13 +3806,13 @@ class AssistantWindow(tk.Toplevel):
         input_wrap.pack(fill="x", padx=14, pady=(8, 0))
         self.entry = tk.Entry(input_wrap, bg=self.AS_CARD, fg=self.AS_TEXT,
                               insertbackground=self.AS_TEXT, relief="flat", bd=0,
-                              highlightthickness=1, highlightbackground="#2c3350",
+                              highlightthickness=1, highlightbackground="#4a2f8a",
                               highlightcolor=self.app._accent(), font=("Segoe UI", 10))
         self.entry.pack(side="left", fill="x", expand=True, ipady=6)
         self.entry.bind("<Return>", self._send)
         self.send_btn = tk.Button(input_wrap, text="Send", command=self._send,
                                   bg=self.app._accent(), fg="#0d1220",
-                                  activebackground="#86a0ff", activeforeground="#0d1220",
+                                  activebackground="#7df6ff", activeforeground="#0d1220",
                                   relief="flat", bd=0, padx=16,
                                   font=("Segoe UI", 10, "bold"), cursor="hand2")
         self.send_btn.pack(side="left", padx=(8, 0))
@@ -3838,7 +3839,7 @@ class AssistantWindow(tk.Toplevel):
             self.chat.insert("end", text, name)
             self.chat.insert("end", "\n")
             self.chat.configure(state="disabled")
-            self.chat.tag_configure(name, foreground="#7cc7ff", underline=True)
+            self.chat.tag_configure(name, foreground="#6ff0ff", underline=True)
             self.chat.tag_bind(name, "<Enter>",
                                lambda e: self.chat.configure(cursor="hand2"))
             self.chat.tag_bind(name, "<Leave>",

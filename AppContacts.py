@@ -21,14 +21,14 @@ try:
 except Exception:
     winsound = None
 
-BG = "#12161f"
-CARD = "#1d2130"
-CARD2 = "#262c40"
-TEXT = "#e9ecf5"
-MUTED = "#8b93a7"
-ACC = "#6c8cff"
-GREEN = "#43c97f"
-RED = "#ff6b6b"
+BG = "#07050f"
+CARD = "#150f28"
+CARD2 = "#221a3d"
+TEXT = "#eaf2ff"
+MUTED = "#8f87c2"
+ACC = "#00f0ff"
+GREEN = "#39ff8c"
+RED = "#ff2255"
 
 DATA_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "AppLauncher")
 CONTACTS_FILE = os.path.join(DATA_DIR, "contacts.json")
@@ -252,6 +252,7 @@ class ContactsWindow(tk.Toplevel):
         self.search_var.set("Search contacts\u2026")
         self.search_var.trace_add("write", lambda *_: self.refresh_list())
         self._notices_job = None
+        self._presence_job = None
 
         self._build()
         self._load_session()
@@ -345,7 +346,8 @@ class ContactsWindow(tk.Toplevel):
                 self.contacts = load_contacts()
             else:
                 self.contacts = [{"name": f["username"], "id": f["id"], "banned": f.get("banned"),
-                                  "is_admin": f.get("is_admin", False), "role": f.get("role", "member")}
+                                  "is_admin": f.get("is_admin", False), "role": f.get("role", "member"),
+                                  "online": f.get("online", False)}
                                  for f in friends]
                 save_contacts(self.contacts)
             self.refresh_list()
@@ -356,7 +358,7 @@ class ContactsWindow(tk.Toplevel):
         try:
             if self.net_active:
                 self.sign_btn.config(text=f"Signed in as {self.net.me['username']}",
-                                     bg="#2b5c40", fg="#8fffc0")
+                                     bg="#0f3d2e", fg="#39ff8c")
             else:
                 self.sign_btn.config(text="Sign in", bg=ACC, fg="#ffffff")
             self.add_btn.config(text="+ Add" if not self.net_active else "+ Add (by username)")
@@ -383,9 +385,40 @@ class ContactsWindow(tk.Toplevel):
         if self._notices_job:
             self.after_cancel(self._notices_job)
             self._notices_job = None
+        if self._presence_job:
+            self.after_cancel(self._presence_job)
+            self._presence_job = None
         if not self.net_active:
             return
         self._poll_notices()
+        self._poll_presence()
+
+    def _poll_presence(self):
+        # Silent background refresh of each friend's online dot - unlike
+        # _apply_net_friends (used for user-initiated loads), a transient
+        # network hiccup here just skips this tick rather than popping up a
+        # warning dialog every 10 seconds.
+        if not self.net_active:
+            return
+        net = self.net
+
+        def done(friends, err):
+            if not self.net_active or self.net is not net:
+                return
+            if err is None and friends is not None:
+                online_by_id = {f["id"]: f.get("online", False) for f in friends}
+                changed = False
+                for c in self.contacts:
+                    o = online_by_id.get(c.get("id"), False)
+                    if c.get("online") != o:
+                        c["online"] = o
+                        changed = True
+                if changed:
+                    self.refresh_list()
+            if self.net_active:
+                self._presence_job = self.after(10000, self._poll_presence)
+
+        self._net_async(net.friends, done)
 
     def _poll_notices(self):
         if not self.net_active:
@@ -466,7 +499,7 @@ class ContactsWindow(tk.Toplevel):
                                   padx=10, pady=5, font=("Segoe UI", 9, "bold"), cursor="hand2")
         self.sign_btn.pack(side="right", padx=(0, 6))
         self.refresh_btn = tk.Button(bar, text="\u21bb Refresh", command=self.refresh_net, bg=CARD2, fg=TEXT,
-                                     activebackground="#343c58", activeforeground="#ffffff", relief="flat", bd=0,
+                                     activebackground="#2c1f52", activeforeground="#ffffff", relief="flat", bd=0,
                                      padx=10, pady=5, font=("Segoe UI", 9, "bold"), cursor="hand2")
         self.refresh_btn.pack(side="right", padx=(0, 6))
         self.add_btn = tk.Button(bar, text="+ Add", command=self.add_contact, bg=ACC, fg="#ffffff",
@@ -511,7 +544,7 @@ class ContactsWindow(tk.Toplevel):
         b("Call", self.call).pack(side="left", padx=(0, 6))
         b("Edit", self.edit_contact).pack(side="left", padx=(0, 6))
         kick_btn = b("Kick", self.kick_contact, RED, "#ffffff")
-        ban_btn = b("Ban", self.ban_contact, "#b3001b", "#ffffff")
+        ban_btn = b("Ban", self.ban_contact, "#a3003f", "#ffffff")
         # Kick is Trial Mod and up; Ban is Mod and up (mirrors the server's
         # kick_guard vs ban_guard split). Role management (Trial Mod / Mod /
         # Co-Owner) lives in the Owner-only Special Menu instead of a quick
@@ -547,7 +580,14 @@ class ContactsWindow(tk.Toplevel):
         self.lb.delete(0, "end")
         for c in self._filtered():
             note = c.get("note", "")
-            self.lb.insert("end", c["name"] + (f"  \u2014  {note}" if note else ""))
+            # The colored-circle emoji carries its own color regardless of
+            # the Listbox's per-item text color, so it works as a plain
+            # online/offline dot without needing per-character coloring
+            # (which tk.Listbox doesn't support anyway).
+            dot = ""
+            if self.net_active and "online" in c:
+                dot = "\U0001f7e2 " if c.get("online") else "\u26aa "
+            self.lb.insert("end", dot + c["name"] + (f"  \u2014  {note}" if note else ""))
 
     def _selected(self):
         sel = self.lb.curselection()
@@ -623,7 +663,7 @@ class ContactsWindow(tk.Toplevel):
         row = tk.Frame(win, bg=BG)
         row.pack(pady=(2, 14))
         tk.Button(row, text="Cancel", command=win.destroy, bg=CARD2, fg=TEXT,
-                  activebackground="#343c58", activeforeground="#ffffff", relief="flat", bd=0,
+                  activebackground="#2c1f52", activeforeground="#ffffff", relief="flat", bd=0,
                   padx=14, pady=6, font=("Segoe UI", 9), cursor="hand2").pack(side="left", padx=4)
         tk.Button(row, text="Add", command=save, bg=ACC, fg="#ffffff", activebackground=ACC,
                   activeforeground="#ffffff", relief="flat", bd=0, padx=14, pady=6,
@@ -691,7 +731,7 @@ class ContactsWindow(tk.Toplevel):
         row = tk.Frame(win, bg=BG)
         row.pack(pady=(2, 14))
         tk.Button(row, text="Cancel", command=win.destroy, bg=CARD2, fg=TEXT,
-                  activebackground="#343c58", activeforeground="#ffffff", relief="flat", bd=0,
+                  activebackground="#2c1f52", activeforeground="#ffffff", relief="flat", bd=0,
                   padx=14, pady=6, font=("Segoe UI", 9), cursor="hand2").pack(side="left", padx=4)
         tk.Button(row, text="Save", command=save, bg=ACC, fg="#ffffff", activebackground=ACC,
                   activeforeground="#ffffff", relief="flat", bd=0, padx=14, pady=6,
@@ -846,7 +886,7 @@ class ContactsWindow(tk.Toplevel):
         btns = tk.Frame(win, bg=BG)
         btns.pack(fill="x", padx=14, pady=(0, 14))
         tk.Button(btns, text="Close", command=win.destroy, bg=CARD2, fg=TEXT,
-                  activebackground="#343c58", activeforeground="#ffffff", relief="flat", bd=0,
+                  activebackground="#2c1f52", activeforeground="#ffffff", relief="flat", bd=0,
                   padx=14, pady=6, font=("Segoe UI", 9), cursor="hand2").pack(side="right")
         tk.Button(btns, text="Unban", command=unban, bg=GREEN, fg="#0d1220",
                   activebackground=GREEN, activeforeground="#0d1220", relief="flat", bd=0,
@@ -867,21 +907,28 @@ class ContactsWindow(tk.Toplevel):
 
 
 class SpecialMenuWindow(tk.Toplevel):
-    """Owner- and Co-Owner-accessible management panel: search for any
-    account (including ones you're not already friends with, and banned
-    ones) - or click "All Accounts" to list literally everyone at once -
-    then Kick, Ban/Unban (permanent or timed), Mute/Unmute, Warn (notice +
-    log entry, no restriction), Force sign-out (ends every active session),
-    Broadcast (a notice to every account), or set their role (Trial Mod /
-    Mod / Co-Owner / member) - a Co-Owner has every capability here that the
-    Owner does. The one exception is View Log (the moderation history,
-    which now also records every new account signing up), which stays
-    Owner-only and simply doesn't appear for anyone else. The Owner rank
-    itself is never touched by any of this - it isn't a grantable role,
-    it's derived purely from OWNER_USERNAME, and the Owner account can't be
-    targeted by these actions at all. Everything here is a thin UI over
-    server endpoints that independently re-check the caller's actual rank -
-    this window is convenience, not the security boundary."""
+    """Owner- and Co-Owner-accessible management panel: a stats-at-a-glance
+    line up top (total/banned/muted counts) - search for any account
+    (including ones you're not already friends with, and banned ones) - or
+    click "All Accounts" to list literally everyone at once. The list
+    supports ctrl/shift-click multi-select, so Kick, Ban/Unban (permanent
+    or timed), Mute/Unmute, Warn, Force sign-out, and Set role can all be
+    applied to several accounts in one go (each reports its own success or
+    failure rather than stopping at the first problem). Selecting a single
+    account additionally shows its join date and friend count, and a
+    private moderation note (visible only in this window, never to the
+    account itself) that can be read and saved right here. Also available:
+    Warn (notice + log entry, no restriction), Force sign-out (ends every
+    active session), Broadcast (a notice to every account) - a Co-Owner has
+    every capability here that the Owner does. The one exception is View
+    Log (the moderation history, which now also records every new account
+    signing up), which stays Owner-only and simply doesn't appear for
+    anyone else. The Owner rank itself is never touched by any of this -
+    it isn't a grantable role, it's derived purely from OWNER_USERNAME, and
+    the Owner account can't be targeted by these actions at all (nor can it
+    be selected alongside others in a bulk action). Everything here is a
+    thin UI over server endpoints that independently re-check the caller's
+    actual rank - this window is convenience, not the security boundary."""
 
     ROLE_LABELS = {
         "member": "Member",
@@ -902,12 +949,13 @@ class SpecialMenuWindow(tk.Toplevel):
         self.on_change = on_change
         self.title("Special Menu")
         self.configure(bg=BG)
-        self.geometry("460x780")
-        self.minsize(420, 600)
+        self.geometry("480x880")
+        self.minsize(440, 680)
         self.transient(app)
         self.results = []
-        self._selected_row = None
+        self._selected_rows = []
         self._build()
+        self._load_stats()
 
     def _build(self):
         header_row = tk.Frame(self, bg=BG)
@@ -918,14 +966,18 @@ class SpecialMenuWindow(tk.Toplevel):
         # the one control here that doesn't even show for a Co-Owner.
         if net_is_owner(self.net):
             tk.Button(header_row, text="View Log", command=self.open_mod_log, bg=CARD2, fg=TEXT,
-                      activebackground="#343c58", activeforeground="#ffffff", relief="flat", bd=0,
+                      activebackground="#2c1f52", activeforeground="#ffffff", relief="flat", bd=0,
                       padx=10, pady=4, font=("Segoe UI", 8, "bold"), cursor="hand2").pack(side="right")
         tk.Button(header_row, text="\U0001f4e2 Broadcast…", command=self.open_broadcast, bg=CARD2, fg=ACC,
-                  activebackground="#343c58", activeforeground=ACC, relief="flat", bd=0,
+                  activebackground="#2c1f52", activeforeground=ACC, relief="flat", bd=0,
                   padx=10, pady=4, font=("Segoe UI", 8, "bold"), cursor="hand2").pack(side="right", padx=(0, 6))
         tk.Label(self, text="Find any account (or click All Accounts), then Kick, Ban, Mute, Warn, "
-                            "Force sign-out, or set their role.",
-                 font=("Segoe UI", 8), bg=BG, fg=MUTED, anchor="w").pack(fill="x", padx=14, pady=(2, 8))
+                            "Force sign-out, or set their role. Ctrl/Shift-click to act on several at once.",
+                 font=("Segoe UI", 8), bg=BG, fg=MUTED, anchor="w", wraplength=440,
+                 justify="left").pack(fill="x", padx=14, pady=(2, 2))
+        self.stats_lbl = tk.Label(self, text="Loading stats…", font=("Segoe UI", 8, "bold"),
+                                  bg=BG, fg=ACC, anchor="w")
+        self.stats_lbl.pack(fill="x", padx=14, pady=(0, 8))
 
         search_row = tk.Frame(self, bg=BG)
         search_row.pack(fill="x", padx=14)
@@ -939,14 +991,14 @@ class SpecialMenuWindow(tk.Toplevel):
                   activebackground=ACC, activeforeground="#ffffff", relief="flat", bd=0,
                   padx=12, pady=6, font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="right")
         tk.Button(search_row, text="\U0001f4cb All Accounts", command=self.list_all, bg=CARD2, fg=TEXT,
-                  activebackground="#343c58", activeforeground="#ffffff", relief="flat", bd=0,
+                  activebackground="#2c1f52", activeforeground="#ffffff", relief="flat", bd=0,
                   padx=10, pady=6, font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="right", padx=(0, 6))
 
         frame = tk.Frame(self, bg=BG)
         frame.pack(fill="both", expand=True, padx=14, pady=(10, 6))
         self.lb = tk.Listbox(frame, bg=CARD, fg=TEXT, selectbackground=ACC, selectforeground="#ffffff",
                              relief="flat", bd=0, highlightthickness=0, font=("Segoe UI", 11),
-                             activestyle="none", cursor="hand2")
+                             activestyle="none", cursor="hand2", selectmode="extended")
         sb = tk.Scrollbar(frame, orient="vertical", command=self.lb.yview, bg=BG, troughcolor=BG,
                           activebackground=MUTED)
         self.lb.config(yscrollcommand=sb.set)
@@ -955,8 +1007,23 @@ class SpecialMenuWindow(tk.Toplevel):
         self.lb.bind("<<ListboxSelect>>", self._on_select)
 
         self.detail_lbl = tk.Label(self, text="Search for someone to see actions.",
-                                   font=("Segoe UI", 9), bg=BG, fg=MUTED, anchor="w", justify="left")
-        self.detail_lbl.pack(fill="x", padx=14, pady=(0, 6))
+                                   font=("Segoe UI", 9), bg=BG, fg=MUTED, anchor="w", justify="left",
+                                   wraplength=440)
+        self.detail_lbl.pack(fill="x", padx=14, pady=(0, 4))
+
+        note_row = tk.Frame(self, bg=BG)
+        note_row.pack(fill="x", padx=14, pady=(0, 6))
+        tk.Label(note_row, text="Private note (only Owner/Co-Owner see this):",
+                 font=("Segoe UI", 8), bg=BG, fg=MUTED, anchor="w").pack(fill="x")
+        self.note_txt = tk.Text(note_row, bg=CARD2, fg=TEXT, insertbackground=TEXT, relief="flat", bd=0,
+                                highlightthickness=0, font=("Segoe UI", 9), height=2, wrap="word",
+                                state="disabled")
+        self.note_txt.pack(fill="x", pady=(2, 4))
+        self.note_save_btn = tk.Button(note_row, text="Save note", command=self.do_save_note, bg=CARD2, fg=TEXT,
+                                       activebackground="#2c1f52", activeforeground="#ffffff", relief="flat",
+                                       bd=0, padx=10, pady=4, font=("Segoe UI", 8, "bold"), cursor="hand2",
+                                       state="disabled")
+        self.note_save_btn.pack(anchor="e")
 
         actions = tk.Frame(self, bg=BG)
         actions.pack(fill="x", padx=14, pady=(0, 6))
@@ -968,7 +1035,7 @@ class SpecialMenuWindow(tk.Toplevel):
 
         self.kick_btn = b(actions, "Kick", self.do_kick, RED, "#ffffff")
         self.kick_btn.pack(side="left", padx=(0, 6))
-        self.ban_btn = b(actions, "Ban", self.do_ban, "#b3001b", "#ffffff")
+        self.ban_btn = b(actions, "Ban", self.do_ban, "#a3003f", "#ffffff")
         self.ban_btn.pack(side="left", padx=(0, 6))
         self.unban_btn = b(actions, "Unban", self.do_unban, GREEN, "#0d1220")
         self.unban_btn.pack(side="left")
@@ -1040,6 +1107,31 @@ class SpecialMenuWindow(tk.Toplevel):
                   self.warn_btn, self.force_btn):
             w.config(state=state)
 
+    def _set_note_enabled(self, enabled):
+        if enabled:
+            self.note_txt.config(state="normal")
+            self.note_save_btn.config(state="normal")
+        else:
+            self.note_txt.config(state="normal")
+            self.note_txt.delete("1.0", "end")
+            self.note_txt.config(state="disabled")
+            self.note_save_btn.config(state="disabled")
+
+    def _set_note_text(self, text):
+        self.note_txt.config(state="normal")
+        self.note_txt.delete("1.0", "end")
+        self.note_txt.insert("1.0", text or "")
+
+    def _load_stats(self):
+        try:
+            stats = self.net.owner_stats()
+        except AppNet.NetError:
+            self.stats_lbl.config(text="")
+            return
+        self.stats_lbl.config(
+            text=f"{stats.get('total', 0)} account(s) total  ·  {stats.get('banned', 0)} banned  ·  "
+                 f"{stats.get('muted', 0)} muted right now")
+
     def list_all(self):
         # Same as searching, just with the box cleared - the server treats
         # a blank query as "show every account" (see owner_search).
@@ -1054,8 +1146,9 @@ class SpecialMenuWindow(tk.Toplevel):
             messagebox.showwarning("Search failed", e.message, parent=self)
             return
         self.lb.delete(0, "end")
-        self._selected_row = None
+        self._selected_rows = []
         self._set_actions_enabled(False)
+        self._set_note_enabled(False)
         self.detail_lbl.config(text=f"{len(self.results)} account(s)." if not q
                                else f"{len(self.results)} result(s).")
         for r in self.results:
@@ -1066,39 +1159,88 @@ class SpecialMenuWindow(tk.Toplevel):
             muted = " (muted)" if r.get("muted") else ""
             self.lb.insert("end", f"{r['username']}{tag}{banned}{muted}")
 
+    def _format_joined(self, ts):
+        try:
+            return datetime.datetime.fromtimestamp(ts).strftime("%b %d, %Y")
+        except Exception:
+            return "unknown"
+
     def _on_select(self, event=None):
         sel = self.lb.curselection()
-        if not sel or sel[0] >= len(self.results):
-            self._selected_row = None
+        rows = [self.results[i] for i in sel if i < len(self.results)]
+        if any(r.get("is_owner") for r in rows):
+            # The Owner is never a valid target for anything here - block
+            # the whole selection rather than silently skipping just them.
+            self._selected_rows = []
+            self.detail_lbl.config(text="The Owner can't be acted on \u2014 deselect them to continue.")
             self._set_actions_enabled(False)
+            self._set_note_enabled(False)
             return
-        r = self.results[sel[0]]
-        self._selected_row = r
-        if r.get("is_owner"):
-            self.detail_lbl.config(text=f"{r['username']} is the Owner \u2014 no actions available.")
+        self._selected_rows = rows
+        if not rows:
+            self.detail_lbl.config(text="Search for someone to see actions.")
             self._set_actions_enabled(False)
+            self._set_note_enabled(False)
             return
-        role = r.get("role", "member")
-        perk = self.ROLE_PERKS.get(role, "")
-        status = "banned" if r.get("banned") else "not banned"
-        if r.get("muted"):
-            status += ", muted"
-        self.detail_lbl.config(
-            text=f"{r['username']} \u2014 role: {self.ROLE_LABELS.get(role, role)} ({perk}) \u2014 {status}")
-        self.role_var.set(role)
+        if len(rows) == 1:
+            r = rows[0]
+            role = r.get("role", "member")
+            perk = self.ROLE_PERKS.get(role, "")
+            status = "banned" if r.get("banned") else "not banned"
+            if r.get("muted"):
+                status += ", muted"
+            joined = self._format_joined(r.get("created"))
+            friends = r.get("friend_count", 0)
+            self.detail_lbl.config(
+                text=f"{r['username']} \u2014 role: {self.ROLE_LABELS.get(role, role)} ({perk}) \u2014 {status}\n"
+                     f"Joined {joined}  \u00b7  {friends} friend(s)")
+            self.role_var.set(role)
+            self._set_note_enabled(True)
+            self._set_note_text(r.get("note", ""))
+        else:
+            self.detail_lbl.config(text=f"{len(rows)} accounts selected.")
+            self._set_note_enabled(False)
         self._set_actions_enabled(True)
 
-    def _selected_or_warn(self):
-        if not self._selected_row:
-            messagebox.showinfo("Pick someone", "Select a result from the list first.", parent=self)
+    def _selected_rows_or_warn(self):
+        if not self._selected_rows:
+            messagebox.showinfo("Pick someone", "Select one or more results from the list first.", parent=self)
             return None
-        return self._selected_row
+        return self._selected_rows
+
+    def _confirm_bulk(self, title, verb, rows):
+        """Builds a consistent yes/no confirmation whether one account or
+        several are selected - verb is a plain action phrase like "Kick" or
+        "Mute for 30 minute(s)"."""
+        if len(rows) == 1:
+            text = f"{verb} {rows[0]['username']}?"
+        else:
+            names = ", ".join(r["username"] for r in rows)
+            text = f"{verb} {len(rows)} accounts?\n\n{names}"
+        return messagebox.askyesno(title, text, parent=self)
+
+    def _apply_bulk(self, rows, fn, verb):
+        """Runs fn(r) for every selected row, collecting per-account errors
+        into one combined warning instead of stopping at the first
+        failure - so one bad row (e.g. someone who got unbanned by someone
+        else a second ago) doesn't block the rest of the batch."""
+        errors = []
+        for r in rows:
+            try:
+                fn(r)
+            except AppNet.NetError as e:
+                errors.append(f"{r['username']}: {e.message}")
+        if errors:
+            messagebox.showwarning(f"Some {verb} failed", "\n".join(errors), parent=self)
 
     def _after_change(self, refreshed_username=None):
         # Re-run the search so the list reflects the new state, and let the
         # Contacts window refresh its own friend list (role/ban tags, etc.)
-        # in case the person acted on happens to be a friend.
-        if self._selected_row:
+        # in case anyone acted on happens to be a friend. Only try to
+        # reselect a highlighted row for a single-target action - a bulk
+        # action just clears the selection, since there's no one row to
+        # land back on.
+        if self._selected_rows:
             self.search()
             if refreshed_username:
                 for i, r in enumerate(self.results):
@@ -1106,6 +1248,7 @@ class SpecialMenuWindow(tk.Toplevel):
                         self.lb.selection_set(i)
                         self._on_select()
                         break
+        self._load_stats()
         if self.on_change:
             try:
                 self.on_change()
@@ -1115,19 +1258,28 @@ class SpecialMenuWindow(tk.Toplevel):
     def _reason(self):
         return (self.reason_var.get() or "").strip() or None
 
-    def do_kick(self):
-        r = self._selected_or_warn()
-        if not r:
+    def do_save_note(self):
+        if len(self._selected_rows) != 1:
             return
-        if not messagebox.askyesno("Kick", f"Kick {r['username']}?", parent=self):
-            return
+        r = self._selected_rows[0]
+        note = self.note_txt.get("1.0", "end").strip()
         try:
-            self.net.kick(r["id"], self._reason())
+            self.net.set_note(r["id"], note)
         except AppNet.NetError as e:
-            messagebox.showwarning("Couldn't kick", e.message, parent=self)
+            messagebox.showwarning("Couldn't save note", e.message, parent=self)
             return
+        r["note"] = note
+
+    def do_kick(self):
+        rows = self._selected_rows_or_warn()
+        if not rows:
+            return
+        if not self._confirm_bulk("Kick", "Kick", rows):
+            return
+        reason = self._reason()
+        self._apply_bulk(rows, lambda r: self.net.kick(r["id"], reason), "kicks")
         self.reason_var.set("")
-        self._after_change(r["username"])
+        self._after_change(rows[0]["username"] if len(rows) == 1 else None)
 
     def _ban_minutes(self):
         raw = (self.ban_min_var.get() or "").strip()
@@ -1146,50 +1298,43 @@ class SpecialMenuWindow(tk.Toplevel):
         return minutes
 
     def do_ban(self):
-        r = self._selected_or_warn()
-        if not r:
+        rows = self._selected_rows_or_warn()
+        if not rows:
             return
         minutes = self._ban_minutes()
         if minutes is None:
             return
-        label = f"for {minutes} minute(s)" if minutes else "permanently"
-        if not messagebox.askyesno("Ban", f"Ban {r['username']} {label}?", parent=self):
+        verb = f"Ban for {minutes} minute(s)" if minutes else "Ban permanently"
+        if not self._confirm_bulk("Ban", verb, rows):
             return
-        try:
-            self.net.ban(r["id"], minutes, self._reason())
-        except AppNet.NetError as e:
-            messagebox.showwarning("Couldn't ban", e.message, parent=self)
-            return
+        reason = self._reason()
+        self._apply_bulk(rows, lambda r: self.net.ban(r["id"], minutes, reason), "bans")
         self.reason_var.set("")
-        self._after_change(r["username"])
+        self._after_change(rows[0]["username"] if len(rows) == 1 else None)
 
     def do_unban(self):
-        r = self._selected_or_warn()
-        if not r:
+        rows = self._selected_rows_or_warn()
+        if not rows:
             return
-        try:
-            self.net.unban(r["id"], self._reason())
-        except AppNet.NetError as e:
-            messagebox.showwarning("Couldn't unban", e.message, parent=self)
+        if len(rows) > 1 and not self._confirm_bulk("Unban", "Unban", rows):
             return
+        reason = self._reason()
+        self._apply_bulk(rows, lambda r: self.net.unban(r["id"], reason), "unbans")
         self.reason_var.set("")
-        self._after_change(r["username"])
+        self._after_change(rows[0]["username"] if len(rows) == 1 else None)
 
     def do_set_role(self):
-        r = self._selected_or_warn()
-        if not r:
+        rows = self._selected_rows_or_warn()
+        if not rows:
             return
         role = self.role_var.get()
         label = self.ROLE_LABELS.get(role, role)
-        if not messagebox.askyesno("Set role", f"Set {r['username']}'s role to {label}?", parent=self):
+        if not self._confirm_bulk("Set role", f"Set role to {label} for", rows):
             return
-        try:
-            self.net.set_role(r["id"], role, self._reason())
-        except AppNet.NetError as e:
-            messagebox.showwarning("Couldn't set role", e.message, parent=self)
-            return
+        reason = self._reason()
+        self._apply_bulk(rows, lambda r: self.net.set_role(r["id"], role, reason), "role changes")
         self.reason_var.set("")
-        self._after_change(r["username"])
+        self._after_change(rows[0]["username"] if len(rows) == 1 else None)
 
     def _mute_minutes(self):
         raw = (self.mute_min_var.get() or "").strip()
@@ -1204,37 +1349,33 @@ class SpecialMenuWindow(tk.Toplevel):
         return minutes
 
     def do_mute(self):
-        r = self._selected_or_warn()
-        if not r:
+        rows = self._selected_rows_or_warn()
+        if not rows:
             return
         minutes = self._mute_minutes()
         if minutes is None:
             return
-        if not messagebox.askyesno("Mute", f"Mute {r['username']} for {minutes} minute(s)?", parent=self):
+        if not self._confirm_bulk("Mute", f"Mute for {minutes} minute(s)", rows):
             return
-        try:
-            self.net.mute(r["id"], minutes, self._reason())
-        except AppNet.NetError as e:
-            messagebox.showwarning("Couldn't mute", e.message, parent=self)
-            return
+        reason = self._reason()
+        self._apply_bulk(rows, lambda r: self.net.mute(r["id"], minutes, reason), "mutes")
         self.reason_var.set("")
-        self._after_change(r["username"])
+        self._after_change(rows[0]["username"] if len(rows) == 1 else None)
 
     def do_unmute(self):
-        r = self._selected_or_warn()
-        if not r:
+        rows = self._selected_rows_or_warn()
+        if not rows:
             return
-        try:
-            self.net.unmute(r["id"], self._reason())
-        except AppNet.NetError as e:
-            messagebox.showwarning("Couldn't unmute", e.message, parent=self)
+        if len(rows) > 1 and not self._confirm_bulk("Unmute", "Unmute", rows):
             return
+        reason = self._reason()
+        self._apply_bulk(rows, lambda r: self.net.unmute(r["id"], reason), "unmutes")
         self.reason_var.set("")
-        self._after_change(r["username"])
+        self._after_change(rows[0]["username"] if len(rows) == 1 else None)
 
     def do_warn(self):
-        r = self._selected_or_warn()
-        if not r:
+        rows = self._selected_rows_or_warn()
+        if not rows:
             return
         reason = self._reason()
         if not reason:
@@ -1242,30 +1383,22 @@ class SpecialMenuWindow(tk.Toplevel):
                                 "Enter a reason before warning - it's included in the notice they get.",
                                 parent=self)
             return
-        if not messagebox.askyesno("Warn", f"Warn {r['username']}?", parent=self):
+        if not self._confirm_bulk("Warn", "Warn", rows):
             return
-        try:
-            self.net.warn(r["id"], reason)
-        except AppNet.NetError as e:
-            messagebox.showwarning("Couldn't warn", e.message, parent=self)
-            return
+        self._apply_bulk(rows, lambda r: self.net.warn(r["id"], reason), "warnings")
         self.reason_var.set("")
-        self._after_change(r["username"])
+        self._after_change(rows[0]["username"] if len(rows) == 1 else None)
 
     def do_force_signout(self):
-        r = self._selected_or_warn()
-        if not r:
+        rows = self._selected_rows_or_warn()
+        if not rows:
             return
-        if not messagebox.askyesno("Force sign-out", f"Sign {r['username']} out of every device they're on?",
-                                   parent=self):
+        if not self._confirm_bulk("Force sign-out", "Sign out of every device", rows):
             return
-        try:
-            self.net.force_signout(r["id"], self._reason())
-        except AppNet.NetError as e:
-            messagebox.showwarning("Couldn't sign them out", e.message, parent=self)
-            return
+        reason = self._reason()
+        self._apply_bulk(rows, lambda r: self.net.force_signout(r["id"], reason), "sign-outs")
         self.reason_var.set("")
-        self._after_change(r["username"])
+        self._after_change(rows[0]["username"] if len(rows) == 1 else None)
 
     def open_mod_log(self):
         try:
@@ -1316,7 +1449,7 @@ class SpecialMenuWindow(tk.Toplevel):
         row = tk.Frame(win, bg=BG)
         row.pack(pady=(8, 14))
         tk.Button(row, text="Cancel", command=win.destroy, bg=CARD2, fg=TEXT,
-                  activebackground="#343c58", activeforeground="#ffffff", relief="flat", bd=0,
+                  activebackground="#2c1f52", activeforeground="#ffffff", relief="flat", bd=0,
                   padx=14, pady=6, font=("Segoe UI", 9), cursor="hand2").pack(side="left", padx=4)
         tk.Button(row, text="Send", command=send, bg=ACC, fg="#ffffff",
                   activebackground=ACC, activeforeground="#ffffff", relief="flat", bd=0,
@@ -1408,8 +1541,14 @@ class ModLogWindow(tk.Toplevel):
         txt.config(state="disabled")
 
         tk.Button(self, text="Close", command=self.destroy, bg=CARD2, fg=TEXT,
-                  activebackground="#343c58", activeforeground="#ffffff", relief="flat", bd=0,
+                  activebackground="#2c1f52", activeforeground="#ffffff", relief="flat", bd=0,
                   padx=14, pady=6, font=("Segoe UI", 9), cursor="hand2").pack(pady=(0, 14))
+
+
+# The reaction picker offered in ChatWindow's right-click menu - must match
+# server/main.py's ALLOWED_REACTIONS exactly, since the server rejects
+# anything outside this set.
+REACTION_EMOJIS = ("\U0001F44D", "❤️", "\U0001F602", "\U0001F62E", "\U0001F622", "\U0001F525")
 
 
 class ChatWindow(tk.Toplevel):
@@ -1429,27 +1568,33 @@ class ChatWindow(tk.Toplevel):
         self.call_job = None
         self._poll_stop = threading.Event()
         self._poll_thread = None
-        self._last_ts = 0.0
+        self._last_typing_sent = 0.0
+        # Net-mode messages are keyed by their server id and reconciled in
+        # place every poll (see _reconcile_msgs) rather than appended
+        # blindly, so an edit/delete/reaction on a message already on
+        # screen updates that same line instead of adding a duplicate.
+        self._msg_cache = {}
+        self._msg_by_id = {}
         self.me = my_username() or "You"
         self.me_display = self.me + (" \u2b50" if net_is_owner(self.net) or
                                      (is_owner() and _is_owner_username(my_username())) else "")
+        net_msgs = []
         if self.net:
-            self.messages = []
             try:
-                self.messages = self.net.messages(self.remote_id, 0)
-                if self.messages:
-                    self._last_ts = max(m["ts"] for m in self.messages)
+                net_msgs = self.net.messages(self.remote_id, 0)
             except AppNet.NetError:
-                self.messages = []
+                net_msgs = []
         else:
             self.chats = load_chats()
             self.messages = self.chats.setdefault(contact["name"], [])
 
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self._build()
-        self._render()
         if self.net:
+            self._reconcile_msgs(net_msgs)
             self._start_poll()
+        else:
+            self._render()
         if start_call:
             self.start_call()
 
@@ -1481,6 +1626,13 @@ class ChatWindow(tk.Toplevel):
         names.pack(side="left")
         tk.Label(names, text=self.contact["name"], font=tkfont.Font(family="Segoe UI", size=13, weight="bold"),
                  bg=CARD, fg=TEXT).pack(anchor="w")
+        # Online/offline dot for this specific conversation - kept up to
+        # date by the same 2-second poll that fetches messages (see
+        # _apply_presence), separate from status_lbl below which tracks
+        # call state instead.
+        self.presence_lbl = tk.Label(names, text="", font=("Segoe UI", 8), bg=CARD, fg=MUTED)
+        if self.net:
+            self.presence_lbl.pack(anchor="w")
         self.status_lbl = tk.Label(names, text=f"Idle \u00b7 as {self.me_display}", font=("Segoe UI", 9), bg=CARD, fg=MUTED)
         self.status_lbl.pack(anchor="w")
         self.call_btn = tk.Button(pad, text="\u260e Call", command=self.toggle_call, bg=GREEN, fg="#0d1220",
@@ -1500,8 +1652,8 @@ class ChatWindow(tk.Toplevel):
                       activebackground="#8a5a00", activeforeground="#ffffff", relief="flat", bd=0,
                       padx=10, pady=6, font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="right", padx=(0, 6))
         if self._ban_ok():
-            tk.Button(pad, text="Ban", command=lambda: self._admin(False), bg="#b3001b", fg="#ffffff",
-                      activebackground="#b3001b", activeforeground="#ffffff", relief="flat", bd=0,
+            tk.Button(pad, text="Ban", command=lambda: self._admin(False), bg="#a3003f", fg="#ffffff",
+                      activebackground="#a3003f", activeforeground="#ffffff", relief="flat", bd=0,
                       padx=10, pady=6, font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="right", padx=(0, 6))
 
         self.txt = tk.Text(self, bg=BG, fg=TEXT, insertbackground=TEXT, relief="flat", bd=0,
@@ -1511,6 +1663,14 @@ class ChatWindow(tk.Toplevel):
         self.txt.tag_config("call", foreground=GREEN)
         self.txt.tag_config("time", foreground=MUTED, font=("Segoe UI", 8))
         self.txt.tag_config("me", foreground=ACC, font=("Segoe UI", 9, "bold"))
+        self.txt.tag_config("deleted", foreground=MUTED, font=("Segoe UI", 10, "italic"))
+        self.txt.tag_config("reactions", foreground=MUTED, font=("Segoe UI", 9))
+        if self.net:
+            # Right-click a message to react to it, or edit/delete your own.
+            self.txt.bind("<Button-3>", self._on_right_click)
+
+        self.typing_lbl = tk.Label(self, text="", font=("Segoe UI", 8, "italic"), bg=BG, fg=MUTED, anchor="w")
+        self.typing_lbl.pack(fill="x", padx=14)
 
         row = tk.Frame(self, bg=BG)
         row.pack(fill="x", padx=14, pady=(0, 12))
@@ -1518,6 +1678,8 @@ class ChatWindow(tk.Toplevel):
                               highlightthickness=0, font=("Segoe UI", 10))
         self.entry.pack(side="left", fill="x", expand=True, padx=(0, 6), ipady=6)
         self.entry.bind("<Return>", lambda e: self.send())
+        if self.net:
+            self.entry.bind("<KeyRelease>", self._on_typing_key)
         tk.Button(row, text="Send", command=self.send, bg=ACC, fg="#ffffff", activebackground=ACC,
                   activeforeground="#ffffff", relief="flat", bd=0, padx=14, pady=6,
                   font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="right")
@@ -1684,13 +1846,18 @@ class ChatWindow(tk.Toplevel):
     def _poll_loop(self):
         while not self._poll_stop.is_set():
             try:
-                msgs = self.net.messages(self.remote_id, self._last_ts)
+                # Always after=0 - a message already on screen can still
+                # change (edited, deleted, reacted to) without its ts
+                # changing, so the full recent window is re-fetched every
+                # tick and reconciled by id rather than filtered by time.
+                msgs = self.net.messages(self.remote_id, 0)
                 state = self.net.call_state(self.remote_id).get("state", "none")
+                pres = self.net.presence(self.remote_id)
             except AppNet.NetError:
-                msgs, state = [], None
+                msgs, state, pres = [], None, None
             if msgs:
                 try:
-                    self.after(0, self._apply_msgs, msgs)
+                    self.after(0, self._reconcile_msgs, msgs)
                 except Exception:
                     pass
             if state is not None:
@@ -1698,13 +1865,228 @@ class ChatWindow(tk.Toplevel):
                     self.after(0, self._apply_call_state, state)
                 except Exception:
                     pass
+            if pres is not None:
+                try:
+                    self.after(0, self._apply_presence, pres)
+                except Exception:
+                    pass
             self._poll_stop.wait(2.0)
 
-    def _apply_msgs(self, msgs):
+    def _apply_presence(self, pres):
+        online = bool(pres.get("online"))
+        self.presence_lbl.config(
+            text=("\U0001f7e2 Online" if online else "⚪ Offline"),
+            fg=(GREEN if online else MUTED))
+        if pres.get("typing"):
+            self.typing_lbl.config(text=f"{self.contact['name']} is typing…")
+        else:
+            self.typing_lbl.config(text="")
+
+    def _on_typing_key(self, event=None):
+        if not self.net:
+            return
+        t = time.time()
+        if t - self._last_typing_sent < 2.0:
+            return
+        self._last_typing_sent = t
+        remote_id = self.remote_id
+        net = self.net
+
+        def worker():
+            try:
+                net.set_typing(remote_id)
+            except AppNet.NetError:
+                pass
+        threading.Thread(target=worker, daemon=True).start()
+
+    # --- message reconciliation (net mode) ------------------------------
+    #
+    # Every poll fetches the whole recent window and diffs it against what's
+    # already rendered, by message id, so an edit/delete/reaction on a
+    # message already on screen updates that one block in place instead of
+    # appending a duplicate. Local/offline chats (no self.net) don't use any
+    # of this - they still go through the older _render()/_append_local path
+    # below, since there's no server round trip to reconcile against.
+
+    def _reaction_sig(self, reactions):
+        return tuple(sorted((r.get("user_id"), r.get("emoji")) for r in (reactions or [])))
+
+    def _message_sig(self, m):
+        return (m.get("text"), bool(m.get("edited")), bool(m.get("deleted")), self._reaction_sig(m.get("reactions")))
+
+    def _reconcile_msgs(self, msgs):
         for m in msgs:
-            if m["ts"] > self._last_ts:
-                self._append_net(m["sender"], m["text"], m["ts"])
-                self._last_ts = m["ts"]
+            mid = m["id"]
+            sig = self._message_sig(m)
+            self._msg_by_id[mid] = m
+            if mid not in self._msg_cache:
+                self._insert_message_block(m)
+                self._msg_cache[mid] = sig
+            elif self._msg_cache[mid] != sig:
+                self._update_message_block(m)
+                self._msg_cache[mid] = sig
+
+    def _format_reactions(self, reactions):
+        if not reactions:
+            return ""
+        counts, order = {}, []
+        for r in reactions:
+            e = r.get("emoji")
+            if e not in counts:
+                counts[e] = 0
+                order.append(e)
+            counts[e] += 1
+        return "   " + "  ".join(f"{e} {counts[e]}" for e in order)
+
+    def _message_parts(self, m):
+        """Returns a flat (text, tag, text, tag, ...) run for one message
+        block, suitable for a single Text.insert() call - inserting several
+        tagged runs in one call keeps them in order regardless of mark
+        gravity, which matters once _update_message_block starts replacing
+        a block in place."""
+        tstr = datetime.datetime.fromtimestamp(m["ts"]).strftime("%H:%M")
+        name = self.net.me["username"] if m["sender"] == self.net.me["id"] else self.contact["name"]
+        parts = [f"[{tstr}]  ", "time", name + ": ", "me"]
+        if m.get("deleted"):
+            parts += ["⚠ This message was deleted.", "deleted"]
+        else:
+            body = m["text"] + (" (edited)" if m.get("edited") else "")
+            parts += [body, "chat"]
+        parts += ["\n", ""]
+        rx = self._format_reactions(m.get("reactions"))
+        if rx:
+            parts += [rx + "\n", "reactions"]
+        return parts
+
+    def _insert_run(self, idx, *parts):
+        self.txt.insert(idx, *parts)
+
+    def _insert_message_block(self, m):
+        mid = m["id"]
+        self.txt.config(state="normal")
+        start_idx = self.txt.index("end-1c")
+        self._insert_run("end-1c", *self._message_parts(m))
+        end_idx = self.txt.index("end-1c")
+        s, e = f"mstart_{mid}", f"mend_{mid}"
+        self.txt.mark_set(s, start_idx)
+        self.txt.mark_gravity(s, "left")
+        self.txt.mark_set(e, end_idx)
+        self.txt.mark_gravity(e, "right")
+        self.txt.config(state="disabled")
+        self.txt.see("end")
+
+    def _update_message_block(self, m):
+        mid = m["id"]
+        s, e = f"mstart_{mid}", f"mend_{mid}"
+        if s not in self.txt.mark_names() or e not in self.txt.mark_names():
+            self._insert_message_block(m)
+            return
+        self.txt.config(state="normal")
+        self.txt.delete(s, e)
+        self._insert_run(s, *self._message_parts(m))
+        self.txt.config(state="disabled")
+
+    def _msg_at(self, click_idx):
+        for mid in self._msg_by_id:
+            s, e = f"mstart_{mid}", f"mend_{mid}"
+            if s not in self.txt.mark_names() or e not in self.txt.mark_names():
+                continue
+            if self.txt.compare(click_idx, ">=", s) and self.txt.compare(click_idx, "<", e):
+                return mid
+        return None
+
+    def _my_reaction(self, m):
+        me_id = self.net.me["id"]
+        for r in (m.get("reactions") or []):
+            if r.get("user_id") == me_id:
+                return r.get("emoji")
+        return None
+
+    def _on_right_click(self, event):
+        click_idx = self.txt.index(f"@{event.x},{event.y}")
+        mid = self._msg_at(click_idx)
+        if mid is None:
+            return
+        m = self._msg_by_id.get(mid)
+        if m is None or m.get("deleted"):
+            return
+        menu = tk.Menu(self, tearoff=0, bg=CARD2, fg=TEXT, activebackground=ACC, activeforeground="#ffffff")
+        react_menu = tk.Menu(menu, tearoff=0, bg=CARD2, fg=TEXT, activebackground=ACC, activeforeground="#ffffff")
+        for emoji in REACTION_EMOJIS:
+            react_menu.add_command(label=emoji, command=lambda e=emoji: self._react(mid, e))
+        if self._my_reaction(m):
+            react_menu.add_separator()
+            react_menu.add_command(label="Remove my reaction", command=lambda: self._react(mid, ""))
+        menu.add_cascade(label="React", menu=react_menu)
+        if m["sender"] == self.net.me["id"]:
+            menu.add_separator()
+            menu.add_command(label="Edit…", command=lambda: self._edit_message(mid, m["text"]))
+            menu.add_command(label="Delete", command=lambda: self._delete_message(mid))
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+
+    def _react(self, mid, emoji):
+        try:
+            self.net.react(mid, emoji)
+        except AppNet.NetError as e:
+            messagebox.showwarning("Couldn't react", e.message, parent=self)
+            return
+        self._force_refresh()
+
+    def _edit_message(self, mid, current_text):
+        win = tk.Toplevel(self)
+        win.title("Edit message")
+        win.configure(bg=BG)
+        win.resizable(False, False)
+        win.transient(self)
+        win.grab_set()
+        box = tk.Text(win, width=40, height=4, bg=CARD2, fg=TEXT, insertbackground=TEXT, relief="flat",
+                      bd=0, highlightthickness=0, font=("Segoe UI", 10), wrap="word")
+        box.pack(padx=14, pady=(14, 8))
+        box.insert("1.0", current_text)
+        box.focus_set()
+
+        def save():
+            text = box.get("1.0", "end").strip()
+            if not text:
+                messagebox.showwarning("Empty", "Message can't be empty - delete it instead.", parent=win)
+                return
+            try:
+                self.net.edit_message(mid, text)
+            except AppNet.NetError as err:
+                messagebox.showwarning("Couldn't edit", err.message, parent=win)
+                return
+            win.destroy()
+            self._force_refresh()
+
+        btn_row = tk.Frame(win, bg=BG)
+        btn_row.pack(pady=(0, 14))
+        tk.Button(btn_row, text="Cancel", command=win.destroy, bg=CARD2, fg=TEXT, activebackground="#2c1f52",
+                  activeforeground="#ffffff", relief="flat", bd=0, padx=14, pady=6,
+                  font=("Segoe UI", 9), cursor="hand2").pack(side="left", padx=4)
+        tk.Button(btn_row, text="Save", command=save, bg=ACC, fg="#ffffff", activebackground=ACC,
+                  activeforeground="#ffffff", relief="flat", bd=0, padx=14, pady=6,
+                  font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="left", padx=4)
+
+    def _delete_message(self, mid):
+        if not messagebox.askyesno("Delete message", "Delete this message for both of you?\n\n"
+                                                       "This can't be undone.", parent=self):
+            return
+        try:
+            self.net.delete_message(mid)
+        except AppNet.NetError as e:
+            messagebox.showwarning("Couldn't delete", e.message, parent=self)
+            return
+        self._force_refresh()
+
+    def _force_refresh(self):
+        try:
+            msgs = self.net.messages(self.remote_id, 0)
+        except AppNet.NetError:
+            return
+        self._reconcile_msgs(msgs)
 
     def _apply_call_state(self, state):
         if state == "live":
@@ -1750,7 +2132,11 @@ class ChatWindow(tk.Toplevel):
                 messagebox.showwarning("Couldn't send", e.message, parent=self)
                 self.entry.insert(0, text)
                 return
-            self._append_net(self.net.me["id"], text, time.time())
+            # Pull the just-sent message back down (with its real server id,
+            # needed before it can be edited/reacted to) rather than
+            # appending a local guess of what the server stored.
+            self._force_refresh()
+            self.typing_lbl.config(text="")
         else:
             kind = "call" if self.in_call else "chat"
             self._append_local(text, kind)
@@ -1760,12 +2146,6 @@ class ChatWindow(tk.Toplevel):
         tstr = self._ts()
         self.messages.append({"time": tstr, "name": self.me_display, "text": text, "kind": kind})
         self._insert_line(tstr, self.me_display, text, kind)
-
-    def _append_net(self, sender, text, ts):
-        name = self.net.me["username"] if sender == self.net.me["id"] else self.contact["name"]
-        tstr = datetime.datetime.fromtimestamp(ts).strftime("%H:%M")
-        self.messages.append({"time": tstr, "name": name, "text": text, "kind": "chat"})
-        self._insert_line(tstr, name, text, "chat")
 
     def _insert_line(self, tstr, name, text, kind):
         self.txt.config(state="normal")
@@ -1846,7 +2226,7 @@ class LoginWindow(tk.Toplevel):
                   padx=18, pady=7, font=("Segoe UI", 10, "bold"), cursor="hand2")
         self.signin_btn.pack(side="left", padx=6)
         self.create_btn = tk.Button(self.button_row, text="Create account", command=self._create_account, bg=CARD2, fg=TEXT,
-                  activebackground="#343c58", activeforeground="#ffffff", relief="flat", bd=0,
+                  activebackground="#2c1f52", activeforeground="#ffffff", relief="flat", bd=0,
                   padx=14, pady=7, font=("Segoe UI", 10), cursor="hand2")
         self.create_btn.pack(side="left", padx=6)
         self.pass_var.trace_add("write", lambda *_: self.hint.config(text=""))
@@ -1871,7 +2251,7 @@ class LoginWindow(tk.Toplevel):
                   padx=18, pady=7, font=("Segoe UI", 10, "bold"), cursor="hand2")
         self.verify_btn.pack(side="left", padx=6)
         self.resend_btn = tk.Button(vrow, text="Resend code", command=self._resend, bg=CARD2, fg=TEXT,
-                  activebackground="#343c58", activeforeground="#ffffff", relief="flat", bd=0,
+                  activebackground="#2c1f52", activeforeground="#ffffff", relief="flat", bd=0,
                   padx=14, pady=7, font=("Segoe UI", 10), cursor="hand2")
         self.resend_btn.pack(side="left", padx=6)
         tk.Button(self.verify_frame, text="← Back", command=self._back_to_form, bg=BG, fg=MUTED,
@@ -2141,7 +2521,7 @@ class ProfileWindow(tk.Toplevel):
             b.grid(row=i // 4, column=i % 4, padx=7, pady=7)
 
         tk.Button(self, text="Choose a picture from your PC\u2026", command=self._browse,
-                  bg=CARD2, fg=TEXT, activebackground="#343c58", activeforeground="#ffffff",
+                  bg=CARD2, fg=TEXT, activebackground="#2c1f52", activeforeground="#ffffff",
                   relief="flat", bd=0, padx=14, pady=7, font=("Segoe UI", 9), cursor="hand2"
                   ).pack(pady=(12, 4))
 

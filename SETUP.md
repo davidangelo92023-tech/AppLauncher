@@ -132,6 +132,41 @@ and `AppFriends.exe` should still be fine to use on their own.
 
 ## What's new
 
+- **v2.0 - a new default look: "Neon"** - the whole app (main launcher, Contacts/Chat,
+  Special Menu, sign-in, Settings/Insights/Soundboard/Assistant, and the games)
+  now defaults to a new dark, near-black theme with glowing magenta/cyan
+  neon accents instead of the old navy-blue look. In the main launcher this
+  is a real theme (pick **Settings → Theme**), so your old favorite -
+  Nebula, Crimson, Emerald, Sunset, Cyber, or Mono - is still one click
+  away; it's just "Neon" by default now, with the animated aurora
+  background turned on out of the box. Shortcut tile colors, the tray
+  icon, and every popup window were refreshed to match. This is also the
+  point where everything built this session (Postgres accounts, roles,
+  mute/ban/warn/broadcast, email verification, the Special Menu overhaul,
+  and the new chat features) is meant to actually be live - see the
+  "Fixing the deploy" note if you haven't run Push Update.bat since the
+  last few rounds of work.
+- **Online status, message reactions, typing indicator, and edit/delete for
+  chats** - the contacts list now shows a green or white dot next to each
+  friend's name so you can tell who's currently signed in. Inside a
+  conversation, right-click any message to react with 👍 ❤️ 😂 😮 😢 🔥
+  (reactions show up under the message for both people), and - for your own
+  messages only - to **Edit…** or **Delete** them (a deleted message is
+  replaced with "This message was deleted" for both sides; an edited one is
+  marked "(edited)"). A conversation also shows the other person's
+  online/offline status at the top, and "X is typing…" while they're
+  composing a reply.
+- **Private notes, account details, stats, and bulk actions in the Special
+  Menu** - the account list now supports ctrl/shift-click to select several
+  accounts at once, so Kick/Ban/Unban/Mute/Unmute/Warn/Force sign-out/Set
+  role can all be applied to a whole group in one click (each account
+  reports its own result, so one failure doesn't stop the rest). Selecting
+  a single account shows its join date and friend count, plus a private
+  moderation note field - a note only Owner/Co-Owner can see, never shown
+  to the account itself, for things like "repeat offender, watch closely."
+  A new line at the top of the window shows stats at a glance - total
+  accounts, how many are currently banned, and how many are currently
+  muted. Same Co-Owner-and-up tier as the rest of the menu.
 - **New account sign-ups appear in View Log, plus an "All Accounts" list** -
   every time someone creates an account, it now shows up in the Special
   Menu's View Log (Owner-only) as "Created an account." Separately, a new

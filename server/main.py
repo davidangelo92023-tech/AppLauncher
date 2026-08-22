@@ -94,6 +94,25 @@ def init_db():
             reason TEXT,
             ts DOUBLE PRECISION NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS mod_notes (
+            user_id TEXT PRIMARY KEY,
+            note TEXT NOT NULL,
+            updated_by TEXT,
+            updated DOUBLE PRECISION NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS message_reactions (
+            message_id INTEGER NOT NULL,
+            user_id TEXT NOT NULL,
+            emoji TEXT NOT NULL,
+            ts DOUBLE PRECISION NOT NULL,
+            PRIMARY KEY (message_id, user_id)
+        );
+        CREATE TABLE IF NOT EXISTS typing_status (
+            user_id TEXT NOT NULL,
+            with_user TEXT NOT NULL,
+            ts DOUBLE PRECISION NOT NULL,
+            PRIMARY KEY (user_id, with_user)
+        );
         """
     )
     # Migration: users existed before is_admin/role did, so CREATE TABLE IF
@@ -118,6 +137,15 @@ def init_db():
     # until an explicit Unban); a nonzero value is a timestamp the ban
     # expires at, for timed bans.
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_until DOUBLE PRECISION NOT NULL DEFAULT 0;")
+    # Presence. 0 (or NULL, for rows from before this column existed) means
+    # "never seen" - is_online() below treats that the same as "long ago",
+    # i.e. offline. Updated (throttled) from auth() on every authenticated
+    # request, so it stays fresh as long as the app is running and signed in.
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen DOUBLE PRECISION NOT NULL DEFAULT 0;")
+    # Message editing/deletion. A deleted message has its text cleared
+    # server-side (not just hidden) - see delete_message below.
+    cur.execute("ALTER TABLE messages ADD COLUMN IF NOT EXISTS edited BOOLEAN NOT NULL DEFAULT FALSE;")
+    cur.execute("ALTER TABLE messages ADD COLUMN IF NOT EXISTS deleted BOOLEAN NOT NULL DEFAULT FALSE;")
     conn.commit()
     conn.close()
 
@@ -248,6 +276,7 @@ def auth(authorization: str = Header(None), x_client_version: Optional[str] = He
         raise HTTPException(401, "Session expired. Sign in again.")
     if row["banned"]:
         raise HTTPException(403, "You have been banned.")
+    touch_last_seen(row["id"], row.get("last_seen") or 0)
     return row
 
 
@@ -310,6 +339,29 @@ mute_guard = kick_guard
 
 def is_muted(user: Any) -> bool:
     return (user.get("muted_until") or 0) > now()
+
+
+# A friend counts as "online" if we've heard from their client in the last
+# ONLINE_WINDOW seconds. auth() (below) refreshes last_seen on every
+# authenticated call but only writes to the DB every LAST_SEEN_WRITE_EVERY
+# seconds at most, so ONLINE_WINDOW needs enough slack to cover a missed
+# heartbeat cycle or two without flickering someone to "offline" while
+# they're still very much using the app.
+ONLINE_WINDOW = 40
+LAST_SEEN_WRITE_EVERY = 15
+
+
+def is_online(user: Any) -> bool:
+    return (user.get("last_seen") or 0) > now() - ONLINE_WINDOW
+
+
+def touch_last_seen(user_id: str, last_seen: float):
+    if (last_seen or 0) > now() - LAST_SEEN_WRITE_EVERY:
+        return
+    conn = db()
+    execute(conn, "UPDATE users SET last_seen = %s WHERE id = %s", (now(), user_id))
+    conn.commit()
+    conn.close()
 
 
 def ban_guard(user: Any):
@@ -438,6 +490,42 @@ class WarnIn(BaseModel):
 
 class BroadcastIn(BaseModel):
     text: str
+
+
+class NoteIn(BaseModel):
+    id: str
+    note: str
+
+
+class MessageEditIn(BaseModel):
+    id: int
+    text: str
+
+
+class MessageIdIn(BaseModel):
+    id: int
+
+
+class ReactIn(BaseModel):
+    message_id: int
+    emoji: str  # empty string clears the caller's own reaction
+
+
+class TypingIn(BaseModel):
+    to: str
+
+
+# The fixed set of reactions the client offers - kept small and server-
+# enforced so a reaction can't be used to smuggle arbitrary text onto a
+# message the way a free-form field could.
+ALLOWED_REACTIONS = (
+    "\U0001F44D",  # thumbs up
+    "❤️",  # red heart
+    "\U0001F602",  # tears of joy
+    "\U0001F62E",  # surprised
+    "\U0001F622",  # sad
+    "\U0001F525",  # fire
+)
 
 
 class UserOut:
@@ -632,7 +720,7 @@ def list_friends(user: Any = Depends(auth)):
     conn = db()
     rows = execute(
         conn,
-        "SELECT u.id, u.username, u.banned, u.is_admin, u.role, u.muted_until FROM friends f "
+        "SELECT u.id, u.username, u.banned, u.is_admin, u.role, u.muted_until, u.last_seen FROM friends f "
         "JOIN users u ON u.id IN (f.user_a, f.user_b) "
         "WHERE (f.user_a = %s OR f.user_b = %s) AND u.id != %s",
         (user["id"], user["id"], user["id"]),
@@ -646,6 +734,7 @@ def list_friends(user: Any = Depends(auth)):
             "is_admin": is_admin_user(r),
             "role": user_role(r),
             "muted": is_muted(r),
+            "online": is_online(r),
         }
         for r in rows
     ]
@@ -901,20 +990,23 @@ def owner_search(body: UsernameIn, user: Any = Depends(auth)):
     banlist_guard(user)
     q = (body.username or "").strip()
     conn = db()
+    # friend_count is a correlated subquery rather than N extra round-trips
+    # in Python - fine at this app's scale even for the 500-row "list
+    # everyone" case. The LEFT JOIN brings in each account's private mod
+    # note (see NoteIn/set_note below), NULL for anyone nobody's noted yet.
+    select = (
+        "SELECT u.id, u.username, u.banned, u.is_admin, u.role, u.muted_until, u.created, "
+        "(SELECT COUNT(*) FROM friends f WHERE f.user_a = u.id OR f.user_b = u.id) AS friend_count, "
+        "n.note AS note "
+        "FROM users u LEFT JOIN mod_notes n ON n.user_id = u.id "
+    )
     if q:
-        rows = execute(
-            conn,
-            "SELECT id, username, banned, is_admin, role, muted_until FROM users WHERE username ILIKE %s LIMIT 25",
-            (f"%{q}%",),
-        ).fetchall()
+        rows = execute(conn, select + "WHERE u.username ILIKE %s LIMIT 25", (f"%{q}%",)).fetchall()
     else:
         # A blank query lists every account instead of nothing - this is
         # what powers the Special Menu's "All Accounts" button. Capped well
         # above any realistic friend-group size, just as a safety net.
-        rows = execute(
-            conn,
-            "SELECT id, username, banned, is_admin, role, muted_until FROM users ORDER BY username LIMIT 500",
-        ).fetchall()
+        rows = execute(conn, select + "ORDER BY u.username LIMIT 500").fetchall()
     conn.close()
     return [
         {
@@ -924,9 +1016,53 @@ def owner_search(body: UsernameIn, user: Any = Depends(auth)):
             "is_owner": is_owner_user(r),
             "role": user_role(r),
             "muted": is_muted(r),
+            "created": r["created"],
+            "friend_count": r["friend_count"],
+            "note": r["note"] or "",
         }
         for r in rows
     ]
+
+
+@app.post("/api/owner/note")
+def set_note(body: NoteIn, user: Any = Depends(auth)):
+    # Co-Owner and up, same tier as the rest of the Special Menu. Private
+    # to Owner/Co-Owner - it's never shown to the account itself, never
+    # included in any notice, and doesn't restrict anything on its own.
+    banlist_guard(user)
+    target = get_user(body.id or "")
+    if target is None:
+        raise HTTPException(404, "User not found.")
+    note = (body.note or "").strip()[:1000]
+    conn = db()
+    if note:
+        execute(
+            conn,
+            "INSERT INTO mod_notes (user_id, note, updated_by, updated) VALUES (%s, %s, %s, %s) "
+            "ON CONFLICT (user_id) DO UPDATE SET note = EXCLUDED.note, "
+            "updated_by = EXCLUDED.updated_by, updated = EXCLUDED.updated",
+            (target["id"], note, user["username"], now()),
+        )
+    else:
+        # An empty note clears it rather than storing a blank row.
+        execute(conn, "DELETE FROM mod_notes WHERE user_id = %s", (target["id"],))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+@app.get("/api/owner/stats")
+def owner_stats(user: Any = Depends(auth)):
+    # Co-Owner and up: a quick at-a-glance count for the top of the Special
+    # Menu - total accounts, how many are currently banned, how many are
+    # currently muted.
+    banlist_guard(user)
+    conn = db()
+    total = execute(conn, "SELECT COUNT(*) AS n FROM users").fetchone()["n"]
+    banned = execute(conn, "SELECT COUNT(*) AS n FROM users WHERE banned = TRUE").fetchone()["n"]
+    muted = execute(conn, "SELECT COUNT(*) AS n FROM users WHERE muted_until > %s", (now(),)).fetchone()["n"]
+    conn.close()
+    return {"total": total, "banned": banned, "muted": muted}
 
 
 @app.get("/api/owner/modlog")
@@ -957,14 +1093,35 @@ def owner_modlog(user: Any = Depends(auth)):
 
 @app.get("/api/messages")
 def get_messages(with_user: str, after: float = 0, user: Any = Depends(auth)):
+    # The client polls this every couple of seconds and, since edits/deletes/
+    # reactions on a message the client already has don't change its `ts`,
+    # it always asks with after=0 and reconciles the returned list against
+    # what's currently on screen by message id (see AppContacts.ChatWindow).
+    # A LIMIT keeps that cheap even for a very long-running conversation -
+    # capped well above what anyone would actually scroll back through in
+    # this app.
     conn = db()
     rows = execute(
         conn,
-        "SELECT id, sender, recipient, text, ts FROM messages "
-        "WHERE ((sender = %s AND recipient = %s) OR (sender = %s AND recipient = %s)) AND ts > %s "
-        "ORDER BY ts ASC",
+        "SELECT id, sender, recipient, text, ts, edited, deleted FROM ("
+        "  SELECT id, sender, recipient, text, ts, edited, deleted FROM messages "
+        "  WHERE ((sender = %s AND recipient = %s) OR (sender = %s AND recipient = %s)) AND ts > %s "
+        "  ORDER BY ts DESC LIMIT 400"
+        ") t ORDER BY ts ASC",
         (user["id"], with_user, with_user, user["id"], after),
     ).fetchall()
+    ids = [r["id"] for r in rows]
+    reactions_by_msg: dict = {}
+    if ids:
+        rrows = execute(
+            conn,
+            "SELECT message_id, user_id, emoji FROM message_reactions WHERE message_id = ANY(%s)",
+            (ids,),
+        ).fetchall()
+        for rr in rrows:
+            reactions_by_msg.setdefault(rr["message_id"], []).append(
+                {"user_id": rr["user_id"], "emoji": rr["emoji"]}
+            )
     conn.close()
     return [
         {
@@ -973,9 +1130,130 @@ def get_messages(with_user: str, after: float = 0, user: Any = Depends(auth)):
             "recipient": r["recipient"],
             "text": r["text"],
             "ts": r["ts"],
+            "edited": bool(r["edited"]),
+            "deleted": bool(r["deleted"]),
+            "reactions": reactions_by_msg.get(r["id"], []),
         }
         for r in rows
     ]
+
+
+@app.post("/api/messages/edit")
+def edit_message(body: MessageEditIn, user: Any = Depends(auth)):
+    conn = db()
+    msg = execute(conn, "SELECT sender, deleted FROM messages WHERE id = %s", (body.id,)).fetchone()
+    if msg is None:
+        conn.close()
+        raise HTTPException(404, "Message not found.")
+    if msg["sender"] != user["id"]:
+        conn.close()
+        raise HTTPException(403, "You can only edit your own messages.")
+    if msg["deleted"]:
+        conn.close()
+        raise HTTPException(400, "That message was deleted.")
+    text = (body.text or "").strip()
+    if not text:
+        conn.close()
+        raise HTTPException(400, "Message can't be empty - delete it instead.")
+    if len(text) > 2000:
+        conn.close()
+        raise HTTPException(400, "Message too long.")
+    execute(conn, "UPDATE messages SET text = %s, edited = TRUE WHERE id = %s", (text, body.id))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+@app.post("/api/messages/delete")
+def delete_message(body: MessageIdIn, user: Any = Depends(auth)):
+    conn = db()
+    msg = execute(conn, "SELECT sender FROM messages WHERE id = %s", (body.id,)).fetchone()
+    if msg is None:
+        conn.close()
+        raise HTTPException(404, "Message not found.")
+    if msg["sender"] != user["id"]:
+        conn.close()
+        raise HTTPException(403, "You can only delete your own messages.")
+    # The text is actually cleared, not just flagged - a deleted message's
+    # content never comes back down the API to either side again.
+    execute(conn, "UPDATE messages SET text = '', deleted = TRUE WHERE id = %s", (body.id,))
+    execute(conn, "DELETE FROM message_reactions WHERE message_id = %s", (body.id,))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+@app.post("/api/messages/react")
+def react_message(body: ReactIn, user: Any = Depends(auth)):
+    conn = db()
+    msg = execute(
+        conn, "SELECT sender, recipient, deleted FROM messages WHERE id = %s", (body.message_id,)
+    ).fetchone()
+    if msg is None:
+        conn.close()
+        raise HTTPException(404, "Message not found.")
+    if user["id"] not in (msg["sender"], msg["recipient"]):
+        conn.close()
+        raise HTTPException(403, "You can't react to that message.")
+    if msg["deleted"]:
+        conn.close()
+        raise HTTPException(400, "That message was deleted.")
+    emoji = (body.emoji or "").strip()
+    if emoji and emoji not in ALLOWED_REACTIONS:
+        conn.close()
+        raise HTTPException(400, "That's not a supported reaction.")
+    if emoji:
+        execute(
+            conn,
+            "INSERT INTO message_reactions (message_id, user_id, emoji, ts) VALUES (%s, %s, %s, %s) "
+            "ON CONFLICT (message_id, user_id) DO UPDATE SET emoji = EXCLUDED.emoji, ts = EXCLUDED.ts",
+            (body.message_id, user["id"], emoji, now()),
+        )
+    else:
+        # An empty emoji clears the caller's own reaction on this message.
+        execute(
+            conn,
+            "DELETE FROM message_reactions WHERE message_id = %s AND user_id = %s",
+            (body.message_id, user["id"]),
+        )
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+@app.post("/api/typing")
+def set_typing(body: TypingIn, user: Any = Depends(auth)):
+    to_id = (body.to or "").strip()
+    if not to_id:
+        raise HTTPException(400, "Missing recipient.")
+    conn = db()
+    execute(
+        conn,
+        "INSERT INTO typing_status (user_id, with_user, ts) VALUES (%s, %s, %s) "
+        "ON CONFLICT (user_id, with_user) DO UPDATE SET ts = EXCLUDED.ts",
+        (user["id"], to_id, now()),
+    )
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+@app.get("/api/presence")
+def presence(with_user: str, user: Any = Depends(auth)):
+    # One small combined poll for a conversation's header: whether the other
+    # person is currently online, and whether they're typing to *me* right
+    # now (a stale typing ping - nothing sent in the last few seconds -
+    # doesn't count, so it clears itself automatically if they stop typing
+    # without sending anything).
+    target = get_user(with_user)
+    online = bool(target) and is_online(target)
+    conn = db()
+    row = execute(
+        conn, "SELECT ts FROM typing_status WHERE user_id = %s AND with_user = %s", (with_user, user["id"])
+    ).fetchone()
+    conn.close()
+    typing = bool(row) and row["ts"] > now() - 6
+    return {"online": online, "typing": typing}
 
 
 @app.post("/api/messages/send")
@@ -1116,9 +1394,23 @@ def _clear_relationship(a: str, b: str):
         "DELETE FROM friends WHERE (user_a = %s AND user_b = %s) OR (user_a = %s AND user_b = %s)",
         (a, b, b, a),
     )
+    # Reactions are keyed by message_id with no foreign key, so clear them
+    # out before the messages themselves disappear from under them.
+    execute(
+        conn,
+        "DELETE FROM message_reactions WHERE message_id IN ("
+        "  SELECT id FROM messages WHERE (sender = %s AND recipient = %s) OR (sender = %s AND recipient = %s)"
+        ")",
+        (a, b, b, a),
+    )
     execute(
         conn,
         "DELETE FROM messages WHERE (sender = %s AND recipient = %s) OR (sender = %s AND recipient = %s)",
+        (a, b, b, a),
+    )
+    execute(
+        conn,
+        "DELETE FROM typing_status WHERE (user_id = %s AND with_user = %s) OR (user_id = %s AND with_user = %s)",
         (a, b, b, a),
     )
     conn.commit()

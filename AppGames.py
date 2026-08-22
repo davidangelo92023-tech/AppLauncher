@@ -12,16 +12,16 @@ from tkinter import messagebox
 
 # ---------------- shared helpers ----------------
 
-BG = "#12161f"
-CARD = "#1d2130"
-CARD2 = "#262c40"
-TEXT = "#e9ecf5"
-MUTED = "#8b93a7"
-ACC = "#6c8cff"
-GREEN = "#43c97f"
-RED = "#ff6b6b"
+BG = "#07050f"
+CARD = "#150f28"
+CARD2 = "#221a3d"
+TEXT = "#eaf2ff"
+MUTED = "#8f87c2"
+ACC = "#00f0ff"
+GREEN = "#39ff8c"
+RED = "#ff2255"
 
-ACCENTS = ["#6c8cff", "#f065a0", "#43c97f", "#ffb86c", "#9d7bff", "#ff6b6b", "#4fd6d6", "#ffe066"]
+ACCENTS = ["#00f0ff", "#ff2bd6", "#39ff8c", "#ffb86c", "#9d7bff", "#ff2255", "#4fd6d6", "#ffe066"]
 
 SCORES_FILE = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "AppLauncher", "games.json")
 
@@ -62,7 +62,7 @@ def _btn(parent, text, cmd, color=ACC, fg="#0d1220"):
 
 def _btn2(parent, text, cmd):
     return tk.Button(parent, text=text, command=cmd, bg=CARD2, fg=TEXT,
-                     activebackground="#343c58", activeforeground="#ffffff",
+                     activebackground="#2c1f52", activeforeground="#ffffff",
                      relief="flat", bd=0, padx=12, pady=5, font=("Segoe UI", 9), cursor="hand2")
 
 
@@ -120,7 +120,7 @@ class PongWindow(tk.Toplevel):
         self.score_lbl = tk.Label(self, text="You 0  \u2014  AI 0   Best 0",
                                   font=("Segoe UI", 10, "bold"), bg=BG, fg=TEXT)
         self.score_lbl.pack()
-        self.cv = tk.Canvas(self, width=self.W, height=self.H, bg="#0d1019", highlightthickness=0)
+        self.cv = tk.Canvas(self, width=self.W, height=self.H, bg="#0a0714", highlightthickness=0)
         self.cv.pack(padx=16, pady=8)
         self.cv.bind("<Motion>", self._mouse)
         self.cv.bind("<B1-Motion>", self._mouse)
@@ -232,13 +232,13 @@ class PongWindow(tk.Toplevel):
         c = self.cv
         c.delete("all")
         c.create_rectangle(20, self.py, 20 + self.PW, self.py + self.PH,
-                           fill="#6c8cff", outline="")
+                           fill="#00f0ff", outline="")
         c.create_rectangle(self.W - 20 - self.PW, self.ay, self.W - 20, self.ay + self.PH,
-                           fill="#ff6b6b", outline="")
+                           fill="#ff2255", outline="")
         for y in range(10, self.H, 26):
             c.create_rectangle(self.W / 2 - 2, y, self.W / 2 + 2, y + 12, fill=MUTED, outline="")
         c.create_oval(self.bx - 7, self.by - 7, self.bx + 7, self.by + 7,
-                      fill="#e9ecf5", outline="")
+                      fill="#eaf2ff", outline="")
         self.score_lbl.config(text=f"You {self.pscore}  \u2014  AI {self.ascore}   Best {max(self.best, self.pscore)}")
         if self.gameover:
             win = self.pscore > self.ascore
@@ -624,9 +624,9 @@ class ChessWindow(tk.Toplevel):
         tk.Label(side, text="AI difficulty", font=("Segoe UI", 8), bg=BG, fg=MUTED).pack(anchor="w", pady=(12, 2))
         self.diff_var = tk.StringVar(value=self.diff)
         om = tk.OptionMenu(side, self.diff_var, *self.DIFFS.keys())
-        om.config(bg=CARD2, fg=TEXT, activebackground="#343c58", activeforeground="#ffffff",
+        om.config(bg=CARD2, fg=TEXT, activebackground="#2c1f52", activeforeground="#ffffff",
                   relief="flat", bd=0, highlightthickness=0, font=("Segoe UI", 9), cursor="hand2")
-        om["menu"].config(bg=CARD2, fg=TEXT, activebackground="#343c58", bd=0)
+        om["menu"].config(bg=CARD2, fg=TEXT, activebackground="#2c1f52", bd=0)
         om.pack(fill="x")
         tk.Label(side, text="", bg=BG).pack(fill="y", expand=True)
 
@@ -1148,7 +1148,7 @@ class SnakeWindow(tk.Toplevel):
                                   bg=BG, fg=TEXT)
         self.score_lbl.pack()
         self.cv = tk.Canvas(self, width=self.COLS * self.CELL, height=self.ROWS * self.CELL,
-                            bg="#0d1019", highlightthickness=0)
+                            bg="#0a0714", highlightthickness=0)
         self.cv.pack(padx=16, pady=8)
         self.bind("<KeyPress>", self._key)
         self.focus_set()
@@ -1202,14 +1202,14 @@ class SnakeWindow(tk.Toplevel):
         for x, y in self.snake[:-1]:
             c.create_rectangle(x * self.CELL + 1, y * self.CELL + 1,
                                (x + 1) * self.CELL - 1, (y + 1) * self.CELL - 1,
-                               fill="#43c97f", outline="#2f8f5e")
+                               fill="#39ff8c", outline="#1f8f56")
         hx, hy = self.snake[-1]
         c.create_rectangle(hx * self.CELL + 1, hy * self.CELL + 1,
                            (hx + 1) * self.CELL - 1, (hy + 1) * self.CELL - 1,
-                           fill="#7fe8b0", outline="#2f8f5e")
+                           fill="#9dffc4", outline="#1f8f56")
         fx, fy = self.food
         c.create_oval(fx * self.CELL + 4, fy * self.CELL + 4,
-                      (fx + 1) * self.CELL - 4, (fy + 1) * self.CELL - 4, fill="#ff6b6b", outline="")
+                      (fx + 1) * self.CELL - 4, (fy + 1) * self.CELL - 4, fill="#ff2255", outline="")
         self.score_lbl.config(text=f"Score {self.score}   High {max(self.high, self.score)}")
         if self.dead:
             if self.score > self.high:
@@ -1340,7 +1340,7 @@ class Tile2048Window(tk.Toplevel):
                 y = r * self.CELL + pad
                 v = self.grid[r][col]
                 c.create_rectangle(x, y, x + self.CELL - 2 * pad, y + self.CELL - 2 * pad,
-                                   fill="#262c40", outline="")
+                                   fill="#221a3d", outline="")
                 if v:
                     c.create_rectangle(x, y, x + self.CELL - 2 * pad, y + self.CELL - 2 * pad,
                                        fill=self.COLORS.get(v, "#3c3c3c"), outline="")
@@ -1646,8 +1646,8 @@ class MemoryWindow(tk.Toplevel):
 # ---------------- Minesweeper ----------------
 
 MINE_NUM_COLORS = {
-    1: "#6c8cff", 2: "#43c97f", 3: "#ff6b6b", 4: "#9d7bff",
-    5: "#ffb86c", 6: "#4fd6d6", 7: "#e9ecf5", 8: "#8b93a7",
+    1: "#00f0ff", 2: "#39ff8c", 3: "#ff2255", 4: "#9d7bff",
+    5: "#ffb86c", 6: "#4fd6d6", 7: "#eaf2ff", 8: "#8f87c2",
 }
 
 
@@ -1668,7 +1668,7 @@ class MinesweeperWindow(tk.Toplevel):
         self.lbl = tk.Label(self, text="", font=("Segoe UI", 10, "bold"), bg=BG, fg=TEXT)
         self.lbl.pack()
         self.cv = tk.Canvas(self, width=self.N * self.CELL, height=self.N * self.CELL,
-                            bg="#0d1019", highlightthickness=0)
+                            bg="#0a0714", highlightthickness=0)
         self.cv.pack(padx=16, pady=8)
         self.cv.bind("<Button-1>", self._left_click)
         self.cv.bind("<Button-3>", self._right_click)
