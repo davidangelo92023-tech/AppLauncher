@@ -745,6 +745,11 @@ class AppLauncher(tk.Tk):
             pass
         if cfg.get("theme") not in THEMES:
             cfg["theme"] = DEFAULT_CONFIG["theme"]
+        # Window opacity is no longer user-adjustable (the slider was
+        # removed from Settings) - force full opacity even if an old
+        # export, cloud-synced blob, or hand-edited config still has a
+        # lower value saved from before.
+        cfg["alpha"] = 1.0
         return cfg
 
     def _save_config(self):
@@ -3076,15 +3081,6 @@ class SettingsWindow(tk.Toplevel):
                  font=self.LBL_FONT, sliderrelief="flat", showvalue=False,
                  length=360).pack(fill="x", padx=18)
 
-        self._title("Window opacity")
-        self._alpha_var = tk.DoubleVar(value=float(self.app.config.get("alpha", 1.0)))
-        tk.Scale(self._inner, from_=0.55, to=1.0, resolution=0.05, orient="horizontal",
-                 variable=self._alpha_var, command=self._set_alpha,
-                 bg=self.SET_BG, fg=self.SET_TEXT, troughcolor=self.SET_CARD,
-                 highlightthickness=0, bd=0, activebackground=self.SET_BG,
-                 font=self.LBL_FONT, sliderrelief="flat", showvalue=False,
-                 length=360).pack(fill="x", padx=18)
-
         self._title("Launch on")
         click_frame = tk.Frame(self._inner, bg=self.SET_BG)
         click_frame.pack(fill="x", padx=18)
@@ -3384,9 +3380,6 @@ class SettingsWindow(tk.Toplevel):
 
     def _set_radius(self, value):
         self.app.set_config("radius", int(float(value)))
-
-    def _set_alpha(self, value):
-        self.app.set_config("alpha", float(value))
 
     def _set_cols(self, value):
         self.app.set_config("max_cols", int(float(value)))
