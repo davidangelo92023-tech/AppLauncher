@@ -63,33 +63,34 @@ THEMES = {
     "Cyber":    {"bg_top": (22, 24, 54),  "bg_bottom": (10, 8, 24),  "glow": (0, 244, 208),  "accent": "#00f4d0"},
     "Mono":     {"bg_top": (33, 35, 41),  "bg_bottom": (13, 14, 17), "glow": (150, 158, 176),"accent": "#a5aebb"},
     "Neon":     {"bg_top": (14, 8, 28),   "bg_bottom": (5, 3, 12),   "glow": (255, 0, 170),  "accent": "#00f0ff"},
+    "Terminal": {"bg_top": (6, 14, 6),    "bg_bottom": (1, 4, 1),    "glow": (0, 255, 65),   "accent": "#33ff33"},
 }
 
-ACCENT_SWATCHES = ["#00f0ff", "#ff2bd6", "#b026ff", "#39ff8c",
-                   "#ffea00", "#ff5f1f", "#ff2255", "#38d2e6"]
+ACCENT_SWATCHES = ["#33ff33", "#39ff14", "#66ff66", "#00ffaa",
+                   "#ffb000", "#00ffff", "#ff3333", "#e8ffe8"]
 
 ICON_SIZES = {"Small": 44, "Medium": 56, "Large": 72}
 
 DEFAULT_CONFIG = {
-    "theme": "Neon",
+    "theme": "Terminal",
     "custom_accent": None,
     "icon_size": 56,
     "click": "single",
     "on_top": False,
     "auto_refresh": True,
     "sort": "name",
-    "particles": True,
+    "particles": False,
     "card_anim": True,
     "confetti": True,
     "party": False,
     "sound": False,
-    "aurora": True,
+    "aurora": False,
     "stats": True,
     "tray": False,
     "autostart": False,
     "clear_mode": False,
     "launch_sound": "Coin",
-    "radius": 20,
+    "radius": 3,
     "label_size": 9,
     "alpha": 1.0,
     "max_cols": 8,
@@ -124,17 +125,17 @@ DEFAULT_CONFIG = {
 }
 
 # ------- fixed palette (works with any accent) -------
-CARD_FILL_HEX = "#170f2e"
-CARD_HOVER_HEX = "#241849"
-CARD_BORDER_HEX = "#5b2fb8"
-SHADOW_HEX = "#040209"
-SEARCH_FILL_HEX = "#130b26"
-BUTTON_FILL_HEX = "#1d1240"
-BUTTON_HOVER_HEX = "#2e1c5c"
-TEXT_HEX = "#eaf2ff"
-MUTED_HEX = "#8f87c2"
-ACCENTS = ["#00f0ff", "#ff2bd6", "#b026ff", "#39ff8c",
-           "#ffea00", "#ff5f1f", "#ff2255", "#38d2e6"]
+CARD_FILL_HEX = "#0a140a"
+CARD_HOVER_HEX = "#132913"
+CARD_BORDER_HEX = "#1f8f3f"
+SHADOW_HEX = "#000000"
+SEARCH_FILL_HEX = "#040a04"
+BUTTON_FILL_HEX = "#0d1f0d"
+BUTTON_HOVER_HEX = "#1a3a1a"
+TEXT_HEX = "#cfffd8"
+MUTED_HEX = "#5a9c6a"
+ACCENTS = ["#33ff33", "#39ff14", "#66ff66", "#00ffaa",
+           "#ffb000", "#00ffff", "#ff3333", "#e8ffe8"]
 
 # ------- geometry -------
 CARD_W = 178
@@ -565,20 +566,20 @@ def get_file_icon(path, size=56):
 def fallback_icon(size=56):
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle([2, 2, size - 3, size - 3], radius=14, fill="#170f2e", outline="#00f0ff", width=2)
-    d.rounded_rectangle([size // 2 - 8, size // 4, size // 2 + 8, size // 4 + 16], radius=2, fill="#00f0ff")
-    d.polygon([(size // 2, size // 2), (size // 2 - 10, size // 2 + 16), (size // 2 + 10, size // 2 + 16)], fill="#00f0ff")
-    d.rounded_rectangle([size // 2 - 8, size // 2 + 22, size // 2 + 8, size // 2 + 34], radius=2, fill="#00f0ff")
+    d.rounded_rectangle([2, 2, size - 3, size - 3], radius=4, fill="#0a140a", outline="#33ff33", width=2)
+    lw = max(2, size // 11)
+    d.line([(size * 0.26, size * 0.30), (size * 0.50, size * 0.50), (size * 0.26, size * 0.70)],
+           fill="#33ff33", width=lw, joint="curve")
+    d.rectangle([size * 0.56, size * 0.60, size * 0.78, size * 0.60 + lw], fill="#33ff33")
     return ImageTk.PhotoImage(img)
 
 
 def make_tray_image():
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle([6, 6, 58, 58], radius=14, fill="#170f2e")
-    d.rounded_rectangle([26, 14, 38, 26], radius=3, fill="#00f0ff")
-    d.polygon([(32, 28), (22, 46), (42, 46)], fill="#00f0ff")
-    d.rounded_rectangle([26, 50, 38, 53], radius=2, fill="#00f0ff")
+    d.rounded_rectangle([6, 6, 58, 58], radius=5, fill="#0a140a", outline="#33ff33", width=2)
+    d.line([(20, 22), (34, 32), (20, 42)], fill="#33ff33", width=6, joint="curve")
+    d.rectangle([38, 38, 48, 44], fill="#33ff33")
     return img
 
 
@@ -637,11 +638,11 @@ class AppLauncher(tk.Tk):
         self.lift()
         self.focus_force()
 
-        self.font_title = tkfont.Font(family="Segoe UI", size=20, weight="bold")
-        self.font_sub = tkfont.Font(family="Segoe UI", size=9)
-        self.font_card = tkfont.Font(family="Segoe UI", size=9)
-        self.font_footer = tkfont.Font(family="Segoe UI", size=9)
-        self._badge_font = tkfont.Font(family="Segoe UI", size=8, weight="bold")
+        self.font_title = tkfont.Font(family="Consolas", size=20, weight="bold")
+        self.font_sub = tkfont.Font(family="Consolas", size=9)
+        self.font_card = tkfont.Font(family="Consolas", size=9)
+        self.font_footer = tkfont.Font(family="Consolas", size=9)
+        self._badge_font = tkfont.Font(family="Consolas", size=8, weight="bold")
 
         self.config = self._load_config()
         self.icon_size = self.config["icon_size"]
@@ -1020,16 +1021,16 @@ class AppLauncher(tk.Tk):
         # a hard rectangle, so it would hide the pill's rounded corners
         # behind its own square edges no matter how round the pill is.
         self._toolbar_defs = {
-            "refresh":   dict(glyph="\u21bb  Refresh", font=("Segoe UI", 10), command=self.refresh, color="text"),
-            "gear":      dict(glyph="\u2699", font=("Segoe UI", 13), command=self.open_settings, color="text"),
-            "add":       dict(glyph="+", font=("Segoe UI", 15), command=self.add_app, color="text"),
-            "music":     dict(glyph="\u266a", font=("Segoe UI", 13), command=self.open_soundboard, color="text"),
-            "assistant": dict(glyph="AI", font=("Segoe UI", 10, "bold"), command=self.open_assistant, color="accent"),
-            "games":     dict(glyph="Games", font=("Segoe UI", 10, "bold"), command=self.open_games, color="accent"),
-            "browser":   dict(glyph="\U0001f310", font=("Segoe UI", 14), command=self.open_browser, color="accent"),
-            "surprise":  dict(glyph="\U0001f3b0", font=("Segoe UI", 15), command=self.open_surprise, color="accent"),
-            "contacts":  dict(glyph="\U0001f465", font=("Segoe UI", 13), command=self.open_contacts, color="accent"),
-            "profile":   dict(glyph="\U0001f464", font=("Segoe UI", 13), command=self.open_profile, color="accent"),
+            "refresh":   dict(glyph="\u21bb  Refresh", font=("Consolas", 10), command=self.refresh, color="text"),
+            "gear":      dict(glyph="\u2699", font=("Consolas", 13), command=self.open_settings, color="text"),
+            "add":       dict(glyph="+", font=("Consolas", 15), command=self.add_app, color="text"),
+            "music":     dict(glyph="\u266a", font=("Consolas", 13), command=self.open_soundboard, color="text"),
+            "assistant": dict(glyph="AI", font=("Consolas", 10, "bold"), command=self.open_assistant, color="accent"),
+            "games":     dict(glyph="Games", font=("Consolas", 10, "bold"), command=self.open_games, color="accent"),
+            "browser":   dict(glyph="\U0001f310", font=("Consolas", 14), command=self.open_browser, color="accent"),
+            "surprise":  dict(glyph="\U0001f3b0", font=("Consolas", 15), command=self.open_surprise, color="accent"),
+            "contacts":  dict(glyph="\U0001f465", font=("Consolas", 13), command=self.open_contacts, color="accent"),
+            "profile":   dict(glyph="\U0001f464", font=("Consolas", 13), command=self.open_profile, color="accent"),
         }
         self._profile_photo = None
 
@@ -1666,7 +1667,7 @@ class AppLauncher(tk.Tk):
             cw = max(h, tw + 24)
             tag = f"chip{i}"
             base = self._accent() if active else BUTTON_FILL_HEX
-            fg = "#0c0718" if active else self._text_color()
+            fg = "#020402" if active else self._text_color()
             self.cv.create_image(x + cw / 2, cy, image=self._pill_bg(cw, h, h // 2, base, False),
                                  tags=("chips", tag))
             self.cv.create_text(x + cw / 2, cy, anchor="center", text=label,
@@ -2051,7 +2052,7 @@ class AppLauncher(tk.Tk):
             self._round_rect(x1 - 38, y0 + 12, x1 - 12, y0 + 30, chip_r,
                              fill=chip, outline="", tags=(tag, "card"))
             self.cv.create_text(x1 - 25, y0 + 21, anchor="center",
-                                text="\u229e", font=self.font_sub, fill="#0c0718",
+                                text="\u229e", font=self.font_sub, fill="#020402",
                                 tags=(tag, "card"))
 
         count = self._launches.get(path, 0)
@@ -2060,7 +2061,7 @@ class AppLauncher(tk.Tk):
             self._round_rect(x0 + 8, y0 + 8, x0 + 8 + 2 * br, y0 + 8 + 2 * br, br,
                              fill=self._accent(), outline="", tags=(tag, "card"))
             self.cv.create_text(x0 + 8 + br, y0 + 8 + br, anchor="center", text=str(count),
-                                font=self._badge_font, fill="#0c0718", tags=(tag, "card"))
+                                font=self._badge_font, fill="#020402", tags=(tag, "card"))
 
     def _icon_for(self, path):
         custom = self._app_icons.get(path)
@@ -2211,7 +2212,7 @@ class AppLauncher(tk.Tk):
 
     def _on_context(self, event):
         idx = self._hit_card(event.x, event.y)
-        menu = tk.Menu(self.cv, tearoff=0, bg="#170f2e", fg=self._text_color(), bd=0,
+        menu = tk.Menu(self.cv, tearoff=0, bg="#0a140a", fg=self._text_color(), bd=0,
                        activebackground=BUTTON_HOVER_HEX, activeforeground="#ffffff")
         if idx is not None:
             name, path, is_dir = self.visible[idx]
@@ -2964,11 +2965,11 @@ class AppLauncher(tk.Tk):
 
 
 class SettingsWindow(tk.Toplevel):
-    SET_BG = "#100a20"
-    SET_CARD = "#1d1240"
-    SET_TEXT = "#eaf2ff"
-    SET_MUTED = "#8f87c2"
-    LBL_FONT = ("Segoe UI", 9)
+    SET_BG = "#050a05"
+    SET_CARD = "#0d1f0d"
+    SET_TEXT = "#cfffd8"
+    SET_MUTED = "#5a9c6a"
+    LBL_FONT = ("Consolas", 9)
 
     def __init__(self, app):
         super().__init__(app)
@@ -3006,7 +3007,7 @@ class SettingsWindow(tk.Toplevel):
 
     def _title(self, text):
         tk.Label(self._inner, text=text,
-                 font=tkfont.Font(family="Segoe UI", size=10, weight="bold"),
+                 font=tkfont.Font(family="Consolas", size=10, weight="bold"),
                  bg=self.SET_BG, fg=self.SET_TEXT).pack(anchor="w", padx=18, pady=(14, 6))
 
     def _check(self, parent, text, var, command):
@@ -3025,7 +3026,7 @@ class SettingsWindow(tk.Toplevel):
             acc = THEMES[name]["accent"]
             b = tk.Button(theme_frame, text=name, command=lambda n=name: self._set_theme(n),
                           bg=acc, fg="#111111", activebackground=acc, relief="flat", bd=0,
-                          font=tkfont.Font(family="Segoe UI", size=8, weight="bold"),
+                          font=tkfont.Font(family="Consolas", size=8, weight="bold"),
                           width=9, height=2, cursor="hand2")
             b.grid(row=i // 3, column=i % 3, padx=3, pady=3)
             self._themes[name] = b
@@ -3041,7 +3042,7 @@ class SettingsWindow(tk.Toplevel):
             b.grid(row=0, column=i, padx=2, pady=3)
             self._swatches[color] = b
         tk.Button(acc_frame, text="\u25a0 Custom\u2026", command=self._pick_custom,
-                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2c1f52",
+                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#16321a",
                   activeforeground="#ffffff", relief="flat", bd=0, padx=8, pady=6,
                   font=self.LBL_FONT, cursor="hand2").grid(row=0, column=len(ACCENT_SWATCHES), padx=6, pady=3)
 
@@ -3168,11 +3169,11 @@ class SettingsWindow(tk.Toplevel):
         hov_btns = tk.Frame(hov_frame, bg=self.SET_BG)
         hov_btns.pack(anchor="w", pady=(4, 0))
         tk.Button(hov_btns, text="Card hover color\u2026", command=self._pick_hover,
-                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2c1f52",
+                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#16321a",
                   activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=6,
                   font=self.LBL_FONT, cursor="hand2").pack(side="left", padx=(0, 8))
         tk.Button(hov_btns, text="Reset", command=self._reset_hover,
-                  bg=self.SET_CARD, fg=self.SET_MUTED, activebackground="#2c1f52",
+                  bg=self.SET_CARD, fg=self.SET_MUTED, activebackground="#16321a",
                   activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=6,
                   font=self.LBL_FONT, cursor="hand2").pack(side="left")
 
@@ -3233,11 +3234,11 @@ class SettingsWindow(tk.Toplevel):
         act_frame = tk.Frame(self._inner, bg=self.SET_BG)
         act_frame.pack(fill="x", padx=18)
         tk.Button(act_frame, text="Open apps folder", command=self.app.open_folder,
-                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2c1f52",
+                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#16321a",
                   activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=6,
                   font=self.LBL_FONT, cursor="hand2").pack(side="left", padx=(0, 8))
         tk.Button(act_frame, text="Add app\u2026", command=self.app.add_app,
-                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2c1f52",
+                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#16321a",
                   activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=6,
                   font=self.LBL_FONT, cursor="hand2").pack(side="left")
 
@@ -3247,7 +3248,7 @@ class SettingsWindow(tk.Toplevel):
         tk.Label(ins_frame, text="See which apps you launch most.",
                  bg=self.SET_BG, fg=self.SET_MUTED, font=self.LBL_FONT).pack(anchor="w", pady=(0, 6))
         tk.Button(ins_frame, text="View usage insights", command=lambda: InsightsWindow(self.app),
-                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2c1f52",
+                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#16321a",
                   activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=6,
                   font=self.LBL_FONT, cursor="hand2").pack(anchor="w")
 
@@ -3267,18 +3268,18 @@ class SettingsWindow(tk.Toplevel):
             sync_btns = tk.Frame(sync_frame, bg=self.SET_BG)
             sync_btns.pack(anchor="w")
             tk.Button(sync_btns, text="Push to cloud", command=lambda: self.app.push_to_cloud(),
-                      bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2c1f52",
+                      bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#16321a",
                       activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=6,
                       font=self.LBL_FONT, cursor="hand2").pack(side="left", padx=(0, 8))
             tk.Button(sync_btns, text="Pull from cloud", command=lambda: self.app.pull_from_cloud(),
-                      bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2c1f52",
+                      bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#16321a",
                       activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=6,
                       font=self.LBL_FONT, cursor="hand2").pack(side="left")
         else:
             tk.Label(sync_frame, text="Sign in via Contacts to sync settings across your PCs.",
                     bg=self.SET_BG, fg=self.SET_MUTED, font=self.LBL_FONT, justify="left").pack(anchor="w", pady=(0, 6))
             tk.Button(sync_frame, text="Open Contacts", command=self.app.open_contacts,
-                      bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2c1f52",
+                      bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#16321a",
                       activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=6,
                       font=self.LBL_FONT, cursor="hand2").pack(anchor="w")
 
@@ -3291,11 +3292,11 @@ class SettingsWindow(tk.Toplevel):
         bak_btns = tk.Frame(bak_frame, bg=self.SET_BG)
         bak_btns.pack(anchor="w")
         tk.Button(bak_btns, text="Export settings\u2026", command=self.app.export_settings,
-                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2c1f52",
+                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#16321a",
                   activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=6,
                   font=self.LBL_FONT, cursor="hand2").pack(side="left", padx=(0, 8))
         tk.Button(bak_btns, text="Import settings\u2026", command=self.app.import_settings,
-                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2c1f52",
+                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#16321a",
                   activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=6,
                   font=self.LBL_FONT, cursor="hand2").pack(side="left")
 
@@ -3309,7 +3310,7 @@ class SettingsWindow(tk.Toplevel):
         self._ai_key_entry = tk.Entry(ai_frame, textvariable=self._ai_key_var, show="*",
                                       bg=self.SET_CARD, fg=self.SET_TEXT,
                                       insertbackground=self.SET_TEXT, relief="flat", bd=0,
-                                      highlightthickness=1, highlightbackground="#4a2f8a")
+                                      highlightthickness=1, highlightbackground="#1f5c2f")
         self._ai_key_entry.pack(fill="x", ipady=5, pady=(0, 4))
         self._ai_key_show_var = tk.BooleanVar()
         tk.Checkbutton(ai_frame, text="Show API key", variable=self._ai_key_show_var,
@@ -3322,17 +3323,17 @@ class SettingsWindow(tk.Toplevel):
         self._ai_url_var = tk.StringVar(value=self.app.config.get("ai_api_url", "https://api.openai.com/v1/chat/completions"))
         tk.Entry(ai_frame, textvariable=self._ai_url_var, bg=self.SET_CARD, fg=self.SET_TEXT,
                  insertbackground=self.SET_TEXT, relief="flat", bd=0,
-                 highlightthickness=1, highlightbackground="#4a2f8a",
+                 highlightthickness=1, highlightbackground="#1f5c2f",
                  font=self.LBL_FONT).pack(fill="x", ipady=5, pady=(2, 6))
         tk.Label(ai_frame, text="Model", bg=self.SET_BG, fg=self.SET_MUTED,
                  font=self.LBL_FONT).pack(anchor="w")
         self._ai_model_var = tk.StringVar(value=self.app.config.get("ai_model", "gpt-4o-mini"))
         tk.Entry(ai_frame, textvariable=self._ai_model_var, bg=self.SET_CARD, fg=self.SET_TEXT,
                  insertbackground=self.SET_TEXT, relief="flat", bd=0,
-                 highlightthickness=1, highlightbackground="#4a2f8a",
+                 highlightthickness=1, highlightbackground="#1f5c2f",
                  font=self.LBL_FONT).pack(fill="x", ipady=5, pady=(2, 6))
         tk.Button(ai_frame, text="Save AI settings", command=self._save_ai,
-                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2c1f52",
+                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#16321a",
                   activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=6,
                   font=self.LBL_FONT, cursor="hand2").pack(anchor="w")
 
@@ -3423,14 +3424,14 @@ class SettingsWindow(tk.Toplevel):
         tk.Label(row, text=label, bg=self.SET_BG, fg=self.SET_TEXT, font=self.LBL_FONT,
                  width=19, anchor="w").pack(side="left")
         cur = tk.Frame(row, bg=self._color_display(key, default), width=18, height=18,
-                       highlightthickness=1, highlightbackground="#4a2f8a")
+                       highlightthickness=1, highlightbackground="#1f5c2f")
         cur.pack(side="left", padx=(0, 6))
         tk.Button(row, text="Pick\u2026", command=lambda k=key, d=default: self._pick_color(k, d),
-                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#2c1f52",
+                  bg=self.SET_CARD, fg=self.SET_TEXT, activebackground="#16321a",
                   activeforeground="#ffffff", relief="flat", bd=0, padx=8, pady=2,
                   font=self.LBL_FONT, cursor="hand2").pack(side="left", padx=(0, 4))
         tk.Button(row, text="Reset", command=lambda k=key, d=default: self._reset_color(k, d),
-                  bg=self.SET_CARD, fg=self.SET_MUTED, activebackground="#2c1f52",
+                  bg=self.SET_CARD, fg=self.SET_MUTED, activebackground="#16321a",
                   activeforeground="#ffffff", relief="flat", bd=0, padx=8, pady=2,
                   font=self.LBL_FONT, cursor="hand2").pack(side="left")
         self._color_swatches[key] = cur
@@ -3510,9 +3511,9 @@ class SettingsWindow(tk.Toplevel):
 
 
 class InsightsWindow(tk.Toplevel):
-    BG = "#100a20"
-    TEXT = "#eaf2ff"
-    MUTED = "#8f87c2"
+    BG = "#050a05"
+    TEXT = "#cfffd8"
+    MUTED = "#5a9c6a"
 
     def __init__(self, app):
         super().__init__(app)
@@ -3528,12 +3529,12 @@ class InsightsWindow(tk.Toplevel):
         top = sorted(launches.items(), key=lambda kv: -kv[1])[:10]
 
         tk.Label(self, text="Usage insights", bg=self.BG, fg=self.TEXT,
-                 font=tkfont.Font(family="Segoe UI", size=13, weight="bold")
+                 font=tkfont.Font(family="Consolas", size=13, weight="bold")
                  ).pack(anchor="w", padx=18, pady=(16, 4))
         summary = (f"{total} total launch{'es' if total != 1 else ''} across "
                   f"{len(launches)} app{'s' if len(launches) != 1 else ''}"
                   if launches else "No launches recorded yet - use the launcher a bit first!")
-        tk.Label(self, text=summary, bg=self.BG, fg=self.MUTED, font=("Segoe UI", 9)
+        tk.Label(self, text=summary, bg=self.BG, fg=self.MUTED, font=("Consolas", 9)
                  ).pack(anchor="w", padx=18, pady=(0, 12))
 
         row_h = 34
@@ -3548,20 +3549,20 @@ class InsightsWindow(tk.Toplevel):
                 if len(name) > 20:
                     name = name[:19] + "…"
                 y = i * row_h + 8
-                canvas.create_text(0, y, anchor="nw", text=name, fill=self.TEXT, font=("Segoe UI", 9))
+                canvas.create_text(0, y, anchor="nw", text=name, fill=self.TEXT, font=("Consolas", 9))
                 bar_w = max(4, int((count / max_count) * 170))
                 accent = app._app_colors.get(path) or accent_for(names_by_path.get(path, name))
                 canvas.create_rectangle(160, y + 1, 160 + bar_w, y + 15, fill=accent, outline="")
                 canvas.create_text(160 + bar_w + 8, y + 8, anchor="w", text=str(count),
-                                   fill=self.MUTED, font=("Segoe UI", 8))
+                                   fill=self.MUTED, font=("Consolas", 8))
 
         self.geometry(f"426x{height + 130}")
 
 
 class SoundboardWindow(tk.Toplevel):
-    SB_BG = "#100a20"
-    SB_CARD = "#1d1240"
-    SB_TEXT = "#eaf2ff"
+    SB_BG = "#050a05"
+    SB_CARD = "#0d1f0d"
+    SB_TEXT = "#cfffd8"
 
     def __init__(self, app):
         super().__init__(app)
@@ -3577,37 +3578,37 @@ class SoundboardWindow(tk.Toplevel):
     def _build(self):
         top = tk.Frame(self, bg=self.SB_BG)
         top.pack(fill="x", padx=16, pady=(14, 4))
-        tk.Label(top, text="Launch sound:", font=("Segoe UI", 9),
+        tk.Label(top, text="Launch sound:", font=("Consolas", 9),
                  bg=self.SB_BG, fg=self.SB_TEXT).pack(side="left")
         self._ls_var = tk.StringVar(value=self.app.config.get("launch_sound") or "Coin")
         opts = ["None"] + list(SOUND_DEFS.keys())
         om = tk.OptionMenu(top, self._ls_var, *opts, command=self._set_ls)
-        om.config(bg=self.SB_CARD, fg=self.SB_TEXT, activebackground="#2c1f52",
+        om.config(bg=self.SB_CARD, fg=self.SB_TEXT, activebackground="#16321a",
                   activeforeground="#ffffff", relief="flat", bd=0, highlightthickness=0,
-                  font=("Segoe UI", 9), cursor="hand2")
-        om["menu"].config(bg=self.SB_CARD, fg=self.SB_TEXT, activebackground="#2c1f52", bd=0)
+                  font=("Consolas", 9), cursor="hand2")
+        om["menu"].config(bg=self.SB_CARD, fg=self.SB_TEXT, activebackground="#16321a", bd=0)
         om.pack(side="left", padx=(10, 0))
 
         self._en_var = tk.BooleanVar(value=bool(self.app.config["sound"]))
         tk.Checkbutton(top, text="Play when launching", variable=self._en_var,
                        command=self._toggle_enabled, bg=self.SB_BG, fg=self.SB_TEXT,
                        selectcolor=self.SB_CARD, activebackground=self.SB_BG,
-                       activeforeground="#ffffff", font=("Segoe UI", 9),
+                       activeforeground="#ffffff", font=("Consolas", 9),
                        cursor="hand2").pack(side="left", padx=(16, 0))
 
         tk.Label(top, text="Pick a sound to play it.\nThe selected sound plays whenever you launch an app.",
-                 font=("Segoe UI", 8), bg=self.SB_BG, fg=self.SB_TEXT,
+                 font=("Consolas", 8), bg=self.SB_BG, fg=self.SB_TEXT,
                  justify="left").pack(anchor="w", pady=(8, 0))
 
-        tk.Label(self, text="\u2015\u2015 Music \u2015\u2015", font=("Segoe UI", 8, "bold"),
+        tk.Label(self, text="\u2015\u2015 Music \u2015\u2015", font=("Consolas", 8, "bold"),
                  bg=self.SB_BG, fg=self.SB_TEXT).pack(anchor="w", padx=16, pady=(10, 4))
         music_row = tk.Frame(self, bg=self.SB_BG)
         music_row.pack(fill="x", padx=16)
         tk.Button(music_row, text="\U0001f3b5  Open Music player",
                   command=self.app.open_music,
-                  bg=self.SB_CARD, fg="#00f0ff", activebackground="#2c1f52",
+                  bg=self.SB_CARD, fg="#33ff33", activebackground="#16321a",
                   activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=9,
-                  font=("Segoe UI", 10, "bold"), cursor="hand2").pack(fill="x")
+                  font=("Consolas", 10, "bold"), cursor="hand2").pack(fill="x")
 
         grid = tk.Frame(self, bg=self.SB_BG)
         grid.pack(fill="both", expand=True, padx=16, pady=6)
@@ -3618,11 +3619,11 @@ class SoundboardWindow(tk.Toplevel):
                           command=lambda n=name, c=color: self._play(n, c),
                           bg=self.SB_CARD, fg=self.SB_TEXT, activebackground=color,
                           activeforeground="#111111", relief="flat", bd=0,
-                          font=("Segoe UI", 9, "bold"), width=11, height=3,
+                          font=("Consolas", 9, "bold"), width=11, height=3,
                           cursor="hand2", highlightthickness=2, highlightbackground=color)
             b.grid(row=i // 3, column=i % 3, padx=5, pady=5)
 
-        self._status = tk.Label(self, text="", font=("Segoe UI", 9), bg=self.SB_BG,
+        self._status = tk.Label(self, text="", font=("Consolas", 9), bg=self.SB_BG,
                                 fg=self.SB_TEXT)
         self._status.pack(side="bottom", pady=(0, 12))
 
@@ -3748,10 +3749,10 @@ def safe_eval(expr):
 
 
 class AssistantWindow(tk.Toplevel):
-    AS_BG = "#0c0718"
-    AS_CARD = "#1d1240"
-    AS_TEXT = "#eaf2ff"
-    AS_MUTED = "#8f87c2"
+    AS_BG = "#020402"
+    AS_CARD = "#0d1f0d"
+    AS_TEXT = "#cfffd8"
+    AS_MUTED = "#5a9c6a"
 
     def __init__(self, app):
         super().__init__(app)
@@ -3768,20 +3769,20 @@ class AssistantWindow(tk.Toplevel):
 
     def _build(self):
         title = tk.Label(self, text="AI Assistant",
-                         font=tkfont.Font(family="Segoe UI", size=14, weight="bold"),
+                         font=tkfont.Font(family="Consolas", size=14, weight="bold"),
                          bg=self.AS_BG, fg=self.app._accent())
         title.pack(anchor="w", padx=14, pady=(12, 0))
         mode = ("AI mode \u00b7 uses your API key"
                 if self.app.config.get("ai_api_key")
                 else "Local mode \u00b7 works offline")
-        tk.Label(self, text=mode, font=("Segoe UI", 8), bg=self.AS_BG,
+        tk.Label(self, text=mode, font=("Consolas", 8), bg=self.AS_BG,
                  fg=self.AS_MUTED).pack(anchor="w", padx=14)
 
         chat_wrap = tk.Frame(self, bg=self.AS_BG)
         chat_wrap.pack(fill="both", expand=True, padx=14, pady=(8, 6))
         self.chat = tk.Text(chat_wrap, bg=self.AS_CARD, fg=self.AS_TEXT, relief="flat", bd=0,
-                            font=("Segoe UI", 10), wrap="word", state="disabled",
-                            padx=10, pady=10, highlightthickness=1, highlightbackground="#4a2f8a",
+                            font=("Consolas", 10), wrap="word", state="disabled",
+                            padx=10, pady=10, highlightthickness=1, highlightbackground="#1f5c2f",
                             selectbackground=self.app._accent())
         self.chat.pack(side="left", fill="both", expand=True)
         sb = tk.Scrollbar(chat_wrap, command=self.chat.yview, bg=self.AS_CARD,
@@ -3789,8 +3790,8 @@ class AssistantWindow(tk.Toplevel):
         sb.pack(side="right", fill="y")
         self.chat.configure(yscrollcommand=sb.set)
         self.chat.tag_configure("you", foreground=self.app._accent(),
-                                font=("Segoe UI", 10, "bold"))
-        self.chat.tag_configure("ai", foreground="#9df3ff")
+                                font=("Consolas", 10, "bold"))
+        self.chat.tag_configure("ai", foreground="#66ff66")
         self.chat.tag_configure("err", foreground="#ff9aa2")
 
         chips = tk.Frame(self, bg=self.AS_BG)
@@ -3798,25 +3799,25 @@ class AssistantWindow(tk.Toplevel):
         for label in ("What apps do I have?", "Open apps folder", "What time is it?",
                       "System info", "Search the web for games", "Tell me a joke"):
             tk.Button(chips, text=label, command=lambda l=label: self._fill(l),
-                      bg=self.AS_CARD, fg=self.AS_TEXT, activebackground="#2c1f52",
+                      bg=self.AS_CARD, fg=self.AS_TEXT, activebackground="#16321a",
                       activeforeground="#ffffff", relief="flat", bd=0, padx=8, pady=4,
-                      font=("Segoe UI", 8), cursor="hand2").pack(side="left", padx=(0, 6))
+                      font=("Consolas", 8), cursor="hand2").pack(side="left", padx=(0, 6))
 
         input_wrap = tk.Frame(self, bg=self.AS_BG)
         input_wrap.pack(fill="x", padx=14, pady=(8, 0))
         self.entry = tk.Entry(input_wrap, bg=self.AS_CARD, fg=self.AS_TEXT,
                               insertbackground=self.AS_TEXT, relief="flat", bd=0,
-                              highlightthickness=1, highlightbackground="#4a2f8a",
-                              highlightcolor=self.app._accent(), font=("Segoe UI", 10))
+                              highlightthickness=1, highlightbackground="#1f5c2f",
+                              highlightcolor=self.app._accent(), font=("Consolas", 10))
         self.entry.pack(side="left", fill="x", expand=True, ipady=6)
         self.entry.bind("<Return>", self._send)
         self.send_btn = tk.Button(input_wrap, text="Send", command=self._send,
-                                  bg=self.app._accent(), fg="#0d1220",
-                                  activebackground="#7df6ff", activeforeground="#0d1220",
+                                  bg=self.app._accent(), fg="#001400",
+                                  activebackground="#55ee55", activeforeground="#001400",
                                   relief="flat", bd=0, padx=16,
-                                  font=("Segoe UI", 10, "bold"), cursor="hand2")
+                                  font=("Consolas", 10, "bold"), cursor="hand2")
         self.send_btn.pack(side="left", padx=(8, 0))
-        self.status = tk.Label(self, text="", font=("Segoe UI", 8), bg=self.AS_BG,
+        self.status = tk.Label(self, text="", font=("Consolas", 8), bg=self.AS_BG,
                                fg=self.AS_MUTED)
         self.status.pack(anchor="w", padx=14, pady=(4, 10))
         self.entry.focus_set()
@@ -3839,7 +3840,7 @@ class AssistantWindow(tk.Toplevel):
             self.chat.insert("end", text, name)
             self.chat.insert("end", "\n")
             self.chat.configure(state="disabled")
-            self.chat.tag_configure(name, foreground="#6ff0ff", underline=True)
+            self.chat.tag_configure(name, foreground="#44dd88", underline=True)
             self.chat.tag_bind(name, "<Enter>",
                                lambda e: self.chat.configure(cursor="hand2"))
             self.chat.tag_bind(name, "<Leave>",

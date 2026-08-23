@@ -132,6 +132,17 @@ and `AppFriends.exe` should still be fine to use on their own.
 
 ## What's new
 
+- **v2.1 - a new default look: "Terminal"** - a much bigger visual swing than the
+  Neon update: the whole app (main launcher, Contacts/Chat, Special Menu, sign-in,
+  Settings/Insights/Soundboard/Assistant, and the games) now defaults to a
+  retro-terminal look - near-black backgrounds, phosphor-green text and
+  accents, a monospace ("Consolas") font everywhere instead of Segoe UI, and
+  sharp-cornered boxy cards instead of the big rounded glowing ones (the
+  aurora background animation and floating particles are off by default to
+  keep it clean and CRT-like). Pick **Settings → Theme → Terminal** if you
+  ever switch away and want it back, or grab one of the green/amber/cyan
+  accent swatches to retint it. The app icon and tray icon were redrawn too -
+  a `>_` prompt cursor instead of the old rocket ship.
 - **v2.0 - a new default look: "Neon"** - the whole app (main launcher, Contacts/Chat,
   Special Menu, sign-in, Settings/Insights/Soundboard/Assistant, and the games)
   now defaults to a new dark, near-black theme with glowing magenta/cyan

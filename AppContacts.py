@@ -21,14 +21,14 @@ try:
 except Exception:
     winsound = None
 
-BG = "#07050f"
-CARD = "#150f28"
-CARD2 = "#221a3d"
-TEXT = "#eaf2ff"
-MUTED = "#8f87c2"
-ACC = "#00f0ff"
-GREEN = "#39ff8c"
-RED = "#ff2255"
+BG = "#020602"
+CARD = "#0a140a"
+CARD2 = "#122012"
+TEXT = "#cfffd8"
+MUTED = "#5a9c6a"
+ACC = "#33ff33"
+GREEN = "#39ff14"
+RED = "#ff3333"
 
 DATA_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "AppLauncher")
 CONTACTS_FILE = os.path.join(DATA_DIR, "contacts.json")
@@ -358,7 +358,7 @@ class ContactsWindow(tk.Toplevel):
         try:
             if self.net_active:
                 self.sign_btn.config(text=f"Signed in as {self.net.me['username']}",
-                                     bg="#0f3d2e", fg="#39ff8c")
+                                     bg="#0f3d2e", fg="#39ff14")
             else:
                 self.sign_btn.config(text="Sign in", bg=ACC, fg="#ffffff")
             self.add_btn.config(text="+ Add" if not self.net_active else "+ Add (by username)")
@@ -485,33 +485,33 @@ class ContactsWindow(tk.Toplevel):
     def _build(self):
         bar = tk.Frame(self, bg=BG)
         bar.pack(fill="x", padx=14, pady=(12, 2))
-        tk.Label(bar, text="Contacts", font=tkfont.Font(family="Segoe UI", size=16, weight="bold"),
+        tk.Label(bar, text="Contacts", font=tkfont.Font(family="Consolas", size=16, weight="bold"),
                  bg=BG, fg=TEXT).pack(side="left")
         self.bans_btn = tk.Button(bar, text="Bans\u2026", command=self.manage_bans, bg=CARD2, fg="#ffd166",
                                   activebackground=CARD2, activeforeground="#ffd166", relief="flat", bd=0,
-                                  padx=10, pady=5, font=("Segoe UI", 9, "bold"), cursor="hand2")
+                                  padx=10, pady=5, font=("Consolas", 9, "bold"), cursor="hand2")
         self.special_btn = tk.Button(bar, text="\u2b50 Special Menu\u2026", command=self.open_special_menu,
                                      bg=CARD2, fg=ACC, activebackground=CARD2, activeforeground=ACC,
                                      relief="flat", bd=0, padx=10, pady=5,
-                                     font=("Segoe UI", 9, "bold"), cursor="hand2")
+                                     font=("Consolas", 9, "bold"), cursor="hand2")
         self.sign_btn = tk.Button(bar, text="Sign in", command=self.toggle_sign_in, bg=ACC, fg="#ffffff",
                                   activebackground=ACC, activeforeground="#ffffff", relief="flat", bd=0,
-                                  padx=10, pady=5, font=("Segoe UI", 9, "bold"), cursor="hand2")
+                                  padx=10, pady=5, font=("Consolas", 9, "bold"), cursor="hand2")
         self.sign_btn.pack(side="right", padx=(0, 6))
         self.refresh_btn = tk.Button(bar, text="\u21bb Refresh", command=self.refresh_net, bg=CARD2, fg=TEXT,
-                                     activebackground="#2c1f52", activeforeground="#ffffff", relief="flat", bd=0,
-                                     padx=10, pady=5, font=("Segoe UI", 9, "bold"), cursor="hand2")
+                                     activebackground="#16321a", activeforeground="#ffffff", relief="flat", bd=0,
+                                     padx=10, pady=5, font=("Consolas", 9, "bold"), cursor="hand2")
         self.refresh_btn.pack(side="right", padx=(0, 6))
         self.add_btn = tk.Button(bar, text="+ Add", command=self.add_contact, bg=ACC, fg="#ffffff",
                                  activebackground=ACC, activeforeground="#ffffff", relief="flat", bd=0,
-                                 padx=12, pady=5, font=("Segoe UI", 9, "bold"), cursor="hand2")
+                                 padx=12, pady=5, font=("Consolas", 9, "bold"), cursor="hand2")
         self.add_btn.pack(side="right")
 
         tk.Label(self, text="Add people you know \u2014 text them, or call for a live chat",
-                 font=("Segoe UI", 8), bg=BG, fg=MUTED, anchor="w").pack(fill="x", padx=14, pady=(4, 4))
+                 font=("Consolas", 8), bg=BG, fg=MUTED, anchor="w").pack(fill="x", padx=14, pady=(4, 4))
 
         self.search = tk.Entry(self, textvariable=self.search_var, bg=CARD2, fg=MUTED, insertbackground=TEXT,
-                               relief="flat", bd=0, highlightthickness=0, font=("Segoe UI", 10))
+                               relief="flat", bd=0, highlightthickness=0, font=("Consolas", 10))
         self.search.pack(fill="x", padx=14, pady=(4, 8))
         self.search.bind("<FocusIn>", self._search_focus_in)
         self.search.bind("<FocusOut>", self._search_focus_out)
@@ -520,7 +520,7 @@ class ContactsWindow(tk.Toplevel):
         frame = tk.Frame(self, bg=BG)
         frame.pack(fill="both", expand=True, padx=14, pady=(0, 8))
         self.lb = tk.Listbox(frame, bg=CARD, fg=TEXT, selectbackground=ACC, selectforeground="#ffffff",
-                             relief="flat", bd=0, highlightthickness=0, font=("Segoe UI", 11),
+                             relief="flat", bd=0, highlightthickness=0, font=("Consolas", 11),
                              activestyle="none", cursor="hand2")
         sb = tk.Scrollbar(frame, orient="vertical", command=self.lb.yview, bg=BG, troughcolor=BG,
                           activebackground=MUTED)
@@ -537,7 +537,7 @@ class ContactsWindow(tk.Toplevel):
         def b(text, cmd, color=CARD2, fg=TEXT, bold=False):
             return tk.Button(btns, text=text, command=cmd, bg=color, fg=fg,
                              activebackground=color, activeforeground=fg, relief="flat", bd=0,
-                             padx=12, pady=6, font=("Segoe UI", 9, "bold" if bold else "normal"),
+                             padx=12, pady=6, font=("Consolas", 9, "bold" if bold else "normal"),
                              cursor="hand2")
 
         b("Message", self.message, ACC, "#ffffff", True).pack(side="left", padx=(0, 6))
@@ -624,13 +624,13 @@ class ContactsWindow(tk.Toplevel):
 
         form = tk.Frame(win, bg=BG)
         form.pack(padx=16, pady=(14, 6))
-        tk.Label(form, text="Their username (as they signed in with)", font=("Segoe UI", 9),
+        tk.Label(form, text="Their username (as they signed in with)", font=("Consolas", 9),
                  bg=BG, fg=MUTED, anchor="w").pack(fill="x")
         e_user = tk.Entry(form, bg=CARD2, fg=TEXT, insertbackground=TEXT, relief="flat", bd=0,
-                          highlightthickness=0, font=("Segoe UI", 10), width=34)
+                          highlightthickness=0, font=("Consolas", 10), width=34)
         e_user.pack(fill="x", pady=(2, 4))
 
-        hint = tk.Label(form, text="", font=("Segoe UI", 9), bg=BG, fg=MUTED, anchor="w")
+        hint = tk.Label(form, text="", font=("Consolas", 9), bg=BG, fg=MUTED, anchor="w")
         hint.pack(fill="x", pady=(0, 8))
 
         def on_key(_=None):
@@ -663,11 +663,11 @@ class ContactsWindow(tk.Toplevel):
         row = tk.Frame(win, bg=BG)
         row.pack(pady=(2, 14))
         tk.Button(row, text="Cancel", command=win.destroy, bg=CARD2, fg=TEXT,
-                  activebackground="#2c1f52", activeforeground="#ffffff", relief="flat", bd=0,
-                  padx=14, pady=6, font=("Segoe UI", 9), cursor="hand2").pack(side="left", padx=4)
+                  activebackground="#16321a", activeforeground="#ffffff", relief="flat", bd=0,
+                  padx=14, pady=6, font=("Consolas", 9), cursor="hand2").pack(side="left", padx=4)
         tk.Button(row, text="Add", command=save, bg=ACC, fg="#ffffff", activebackground=ACC,
                   activeforeground="#ffffff", relief="flat", bd=0, padx=14, pady=6,
-                  font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="left", padx=4)
+                  font=("Consolas", 9, "bold"), cursor="hand2").pack(side="left", padx=4)
         e_user.focus_set()
 
     def edit_contact(self):
@@ -693,9 +693,9 @@ class ContactsWindow(tk.Toplevel):
         form.pack(padx=16, pady=(14, 6))
 
         def field(label):
-            tk.Label(form, text=label, font=("Segoe UI", 9), bg=BG, fg=MUTED, anchor="w").pack(fill="x")
+            tk.Label(form, text=label, font=("Consolas", 9), bg=BG, fg=MUTED, anchor="w").pack(fill="x")
             e = tk.Entry(form, bg=CARD2, fg=TEXT, insertbackground=TEXT, relief="flat", bd=0,
-                         highlightthickness=0, font=("Segoe UI", 10), width=34)
+                         highlightthickness=0, font=("Consolas", 10), width=34)
             e.pack(fill="x", pady=(2, 8))
             return e
 
@@ -731,11 +731,11 @@ class ContactsWindow(tk.Toplevel):
         row = tk.Frame(win, bg=BG)
         row.pack(pady=(2, 14))
         tk.Button(row, text="Cancel", command=win.destroy, bg=CARD2, fg=TEXT,
-                  activebackground="#2c1f52", activeforeground="#ffffff", relief="flat", bd=0,
-                  padx=14, pady=6, font=("Segoe UI", 9), cursor="hand2").pack(side="left", padx=4)
+                  activebackground="#16321a", activeforeground="#ffffff", relief="flat", bd=0,
+                  padx=14, pady=6, font=("Consolas", 9), cursor="hand2").pack(side="left", padx=4)
         tk.Button(row, text="Save", command=save, bg=ACC, fg="#ffffff", activebackground=ACC,
                   activeforeground="#ffffff", relief="flat", bd=0, padx=14, pady=6,
-                  font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="left", padx=4)
+                  font=("Consolas", 9, "bold"), cursor="hand2").pack(side="left", padx=4)
         e_name.focus_set()
 
     def _owner_ok(self):
@@ -837,15 +837,15 @@ class ContactsWindow(tk.Toplevel):
         win.transient(self)
         win.grab_set()
 
-        tk.Label(win, text="Banned people", font=tkfont.Font(family="Segoe UI", size=14, weight="bold"),
+        tk.Label(win, text="Banned people", font=tkfont.Font(family="Consolas", size=14, weight="bold"),
                  bg=BG, fg=TEXT).pack(pady=(14, 2))
         tk.Label(win, text="They can\u2019t be added to your network while banned.",
-                 font=("Segoe UI", 8), bg=BG, fg=MUTED).pack(pady=(0, 8))
+                 font=("Consolas", 8), bg=BG, fg=MUTED).pack(pady=(0, 8))
 
         box = tk.Frame(win, bg=BG)
         box.pack(fill="both", expand=True, padx=14)
         lb = tk.Listbox(box, bg=CARD, fg=TEXT, selectbackground=ACC, selectforeground="#ffffff",
-                        relief="flat", bd=0, highlightthickness=0, font=("Segoe UI", 11),
+                        relief="flat", bd=0, highlightthickness=0, font=("Consolas", 11),
                         activestyle="none", cursor="hand2")
         sb = tk.Scrollbar(box, orient="vertical", command=lb.yview, bg=BG, troughcolor=BG,
                           activebackground=MUTED)
@@ -886,11 +886,11 @@ class ContactsWindow(tk.Toplevel):
         btns = tk.Frame(win, bg=BG)
         btns.pack(fill="x", padx=14, pady=(0, 14))
         tk.Button(btns, text="Close", command=win.destroy, bg=CARD2, fg=TEXT,
-                  activebackground="#2c1f52", activeforeground="#ffffff", relief="flat", bd=0,
-                  padx=14, pady=6, font=("Segoe UI", 9), cursor="hand2").pack(side="right")
-        tk.Button(btns, text="Unban", command=unban, bg=GREEN, fg="#0d1220",
-                  activebackground=GREEN, activeforeground="#0d1220", relief="flat", bd=0,
-                  padx=14, pady=6, font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="right", padx=(0, 8))
+                  activebackground="#16321a", activeforeground="#ffffff", relief="flat", bd=0,
+                  padx=14, pady=6, font=("Consolas", 9), cursor="hand2").pack(side="right")
+        tk.Button(btns, text="Unban", command=unban, bg=GREEN, fg="#001400",
+                  activebackground=GREEN, activeforeground="#001400", relief="flat", bd=0,
+                  padx=14, pady=6, font=("Consolas", 9, "bold"), cursor="hand2").pack(side="right", padx=(0, 8))
         refresh()
 
     def open_special_menu(self):
@@ -960,22 +960,22 @@ class SpecialMenuWindow(tk.Toplevel):
     def _build(self):
         header_row = tk.Frame(self, bg=BG)
         header_row.pack(fill="x", padx=14, pady=(14, 0))
-        tk.Label(header_row, text="\u2b50 Special Menu", font=tkfont.Font(family="Segoe UI", size=15, weight="bold"),
+        tk.Label(header_row, text="\u2b50 Special Menu", font=tkfont.Font(family="Consolas", size=15, weight="bold"),
                  bg=BG, fg=TEXT).pack(side="left")
         # View Log stays Owner-only, unlike the rest of this menu - so it's
         # the one control here that doesn't even show for a Co-Owner.
         if net_is_owner(self.net):
             tk.Button(header_row, text="View Log", command=self.open_mod_log, bg=CARD2, fg=TEXT,
-                      activebackground="#2c1f52", activeforeground="#ffffff", relief="flat", bd=0,
-                      padx=10, pady=4, font=("Segoe UI", 8, "bold"), cursor="hand2").pack(side="right")
+                      activebackground="#16321a", activeforeground="#ffffff", relief="flat", bd=0,
+                      padx=10, pady=4, font=("Consolas", 8, "bold"), cursor="hand2").pack(side="right")
         tk.Button(header_row, text="\U0001f4e2 Broadcast…", command=self.open_broadcast, bg=CARD2, fg=ACC,
-                  activebackground="#2c1f52", activeforeground=ACC, relief="flat", bd=0,
-                  padx=10, pady=4, font=("Segoe UI", 8, "bold"), cursor="hand2").pack(side="right", padx=(0, 6))
+                  activebackground="#16321a", activeforeground=ACC, relief="flat", bd=0,
+                  padx=10, pady=4, font=("Consolas", 8, "bold"), cursor="hand2").pack(side="right", padx=(0, 6))
         tk.Label(self, text="Find any account (or click All Accounts), then Kick, Ban, Mute, Warn, "
                             "Force sign-out, or set their role. Ctrl/Shift-click to act on several at once.",
-                 font=("Segoe UI", 8), bg=BG, fg=MUTED, anchor="w", wraplength=440,
+                 font=("Consolas", 8), bg=BG, fg=MUTED, anchor="w", wraplength=440,
                  justify="left").pack(fill="x", padx=14, pady=(2, 2))
-        self.stats_lbl = tk.Label(self, text="Loading stats…", font=("Segoe UI", 8, "bold"),
+        self.stats_lbl = tk.Label(self, text="Loading stats…", font=("Consolas", 8, "bold"),
                                   bg=BG, fg=ACC, anchor="w")
         self.stats_lbl.pack(fill="x", padx=14, pady=(0, 8))
 
@@ -983,21 +983,21 @@ class SpecialMenuWindow(tk.Toplevel):
         search_row.pack(fill="x", padx=14)
         self.q_var = tk.StringVar()
         entry = tk.Entry(search_row, textvariable=self.q_var, bg=CARD2, fg=TEXT, insertbackground=TEXT,
-                         relief="flat", bd=0, highlightthickness=0, font=("Segoe UI", 10))
+                         relief="flat", bd=0, highlightthickness=0, font=("Consolas", 10))
         entry.pack(side="left", fill="x", expand=True, ipady=6, padx=(0, 6))
         entry.bind("<Return>", lambda e: self.search())
         entry.focus_set()
         tk.Button(search_row, text="Find", command=self.search, bg=ACC, fg="#ffffff",
                   activebackground=ACC, activeforeground="#ffffff", relief="flat", bd=0,
-                  padx=12, pady=6, font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="right")
+                  padx=12, pady=6, font=("Consolas", 9, "bold"), cursor="hand2").pack(side="right")
         tk.Button(search_row, text="\U0001f4cb All Accounts", command=self.list_all, bg=CARD2, fg=TEXT,
-                  activebackground="#2c1f52", activeforeground="#ffffff", relief="flat", bd=0,
-                  padx=10, pady=6, font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="right", padx=(0, 6))
+                  activebackground="#16321a", activeforeground="#ffffff", relief="flat", bd=0,
+                  padx=10, pady=6, font=("Consolas", 9, "bold"), cursor="hand2").pack(side="right", padx=(0, 6))
 
         frame = tk.Frame(self, bg=BG)
         frame.pack(fill="both", expand=True, padx=14, pady=(10, 6))
         self.lb = tk.Listbox(frame, bg=CARD, fg=TEXT, selectbackground=ACC, selectforeground="#ffffff",
-                             relief="flat", bd=0, highlightthickness=0, font=("Segoe UI", 11),
+                             relief="flat", bd=0, highlightthickness=0, font=("Consolas", 11),
                              activestyle="none", cursor="hand2", selectmode="extended")
         sb = tk.Scrollbar(frame, orient="vertical", command=self.lb.yview, bg=BG, troughcolor=BG,
                           activebackground=MUTED)
@@ -1007,21 +1007,21 @@ class SpecialMenuWindow(tk.Toplevel):
         self.lb.bind("<<ListboxSelect>>", self._on_select)
 
         self.detail_lbl = tk.Label(self, text="Search for someone to see actions.",
-                                   font=("Segoe UI", 9), bg=BG, fg=MUTED, anchor="w", justify="left",
+                                   font=("Consolas", 9), bg=BG, fg=MUTED, anchor="w", justify="left",
                                    wraplength=440)
         self.detail_lbl.pack(fill="x", padx=14, pady=(0, 4))
 
         note_row = tk.Frame(self, bg=BG)
         note_row.pack(fill="x", padx=14, pady=(0, 6))
         tk.Label(note_row, text="Private note (only Owner/Co-Owner see this):",
-                 font=("Segoe UI", 8), bg=BG, fg=MUTED, anchor="w").pack(fill="x")
+                 font=("Consolas", 8), bg=BG, fg=MUTED, anchor="w").pack(fill="x")
         self.note_txt = tk.Text(note_row, bg=CARD2, fg=TEXT, insertbackground=TEXT, relief="flat", bd=0,
-                                highlightthickness=0, font=("Segoe UI", 9), height=2, wrap="word",
+                                highlightthickness=0, font=("Consolas", 9), height=2, wrap="word",
                                 state="disabled")
         self.note_txt.pack(fill="x", pady=(2, 4))
         self.note_save_btn = tk.Button(note_row, text="Save note", command=self.do_save_note, bg=CARD2, fg=TEXT,
-                                       activebackground="#2c1f52", activeforeground="#ffffff", relief="flat",
-                                       bd=0, padx=10, pady=4, font=("Segoe UI", 8, "bold"), cursor="hand2",
+                                       activebackground="#16321a", activeforeground="#ffffff", relief="flat",
+                                       bd=0, padx=10, pady=4, font=("Consolas", 8, "bold"), cursor="hand2",
                                        state="disabled")
         self.note_save_btn.pack(anchor="e")
 
@@ -1031,58 +1031,58 @@ class SpecialMenuWindow(tk.Toplevel):
         def b(parent, text, cmd, color=CARD2, fg=TEXT):
             return tk.Button(parent, text=text, command=cmd, bg=color, fg=fg,
                              activebackground=color, activeforeground=fg, relief="flat", bd=0,
-                             padx=10, pady=6, font=("Segoe UI", 9, "bold"), cursor="hand2")
+                             padx=10, pady=6, font=("Consolas", 9, "bold"), cursor="hand2")
 
         self.kick_btn = b(actions, "Kick", self.do_kick, RED, "#ffffff")
         self.kick_btn.pack(side="left", padx=(0, 6))
         self.ban_btn = b(actions, "Ban", self.do_ban, "#a3003f", "#ffffff")
         self.ban_btn.pack(side="left", padx=(0, 6))
-        self.unban_btn = b(actions, "Unban", self.do_unban, GREEN, "#0d1220")
+        self.unban_btn = b(actions, "Unban", self.do_unban, GREEN, "#001400")
         self.unban_btn.pack(side="left")
 
         ban_row = tk.Frame(self, bg=BG)
         ban_row.pack(fill="x", padx=14, pady=(4, 0))
-        tk.Label(ban_row, text="Ban length:", font=("Segoe UI", 9), bg=BG, fg=MUTED).pack(side="left", padx=(0, 8))
+        tk.Label(ban_row, text="Ban length:", font=("Consolas", 9), bg=BG, fg=MUTED).pack(side="left", padx=(0, 8))
         self.ban_min_var = tk.StringVar(value="")
         ban_entry = tk.Entry(ban_row, textvariable=self.ban_min_var, width=6, bg=CARD2, fg=TEXT,
                              insertbackground=TEXT, relief="flat", bd=0, highlightthickness=0,
-                             font=("Segoe UI", 9), justify="center")
+                             font=("Consolas", 9), justify="center")
         ban_entry.pack(side="left", ipady=4)
-        tk.Label(ban_row, text="min (blank = permanent)", font=("Segoe UI", 9), bg=BG, fg=MUTED).pack(
+        tk.Label(ban_row, text="min (blank = permanent)", font=("Consolas", 9), bg=BG, fg=MUTED).pack(
             side="left", padx=(4, 0))
 
         mute_row = tk.Frame(self, bg=BG)
         mute_row.pack(fill="x", padx=14, pady=(6, 0))
         self.mute_btn = b(mute_row, "Mute", self.do_mute, "#8a5a00", "#ffffff")
         self.mute_btn.pack(side="left", padx=(0, 6))
-        self.unmute_btn = b(mute_row, "Unmute", self.do_unmute, GREEN, "#0d1220")
+        self.unmute_btn = b(mute_row, "Unmute", self.do_unmute, GREEN, "#001400")
         self.unmute_btn.pack(side="left", padx=(0, 10))
-        tk.Label(mute_row, text="for", font=("Segoe UI", 9), bg=BG, fg=MUTED).pack(side="left", padx=(0, 4))
+        tk.Label(mute_row, text="for", font=("Consolas", 9), bg=BG, fg=MUTED).pack(side="left", padx=(0, 4))
         self.mute_min_var = tk.StringVar(value="30")
         mute_entry = tk.Entry(mute_row, textvariable=self.mute_min_var, width=5, bg=CARD2, fg=TEXT,
                               insertbackground=TEXT, relief="flat", bd=0, highlightthickness=0,
-                              font=("Segoe UI", 9), justify="center")
+                              font=("Consolas", 9), justify="center")
         mute_entry.pack(side="left", ipady=4)
-        tk.Label(mute_row, text="min", font=("Segoe UI", 9), bg=BG, fg=MUTED).pack(side="left", padx=(4, 0))
+        tk.Label(mute_row, text="min", font=("Consolas", 9), bg=BG, fg=MUTED).pack(side="left", padx=(4, 0))
 
         extra_row = tk.Frame(self, bg=BG)
         extra_row.pack(fill="x", padx=14, pady=(6, 0))
-        self.warn_btn = b(extra_row, "Warn", self.do_warn, "#ffd166", "#0d1220")
+        self.warn_btn = b(extra_row, "Warn", self.do_warn, "#ffd166", "#001400")
         self.warn_btn.pack(side="left", padx=(0, 6))
         self.force_btn = b(extra_row, "Force sign-out", self.do_force_signout, "#5a3d99", "#ffffff")
         self.force_btn.pack(side="left")
 
         reason_row = tk.Frame(self, bg=BG)
         reason_row.pack(fill="x", padx=14, pady=(6, 0))
-        tk.Label(reason_row, text="Reason (optional):", font=("Segoe UI", 9), bg=BG, fg=MUTED).pack(
+        tk.Label(reason_row, text="Reason (optional):", font=("Consolas", 9), bg=BG, fg=MUTED).pack(
             side="left", padx=(0, 8))
         self.reason_var = tk.StringVar()
         reason_entry = tk.Entry(reason_row, textvariable=self.reason_var, bg=CARD2, fg=TEXT,
                                 insertbackground=TEXT, relief="flat", bd=0, highlightthickness=0,
-                                font=("Segoe UI", 9))
+                                font=("Consolas", 9))
         reason_entry.pack(side="left", fill="x", expand=True, ipady=4)
         tk.Label(self, text="Included in the notice they get, and saved to the log below.",
-                 font=("Segoe UI", 7), bg=BG, fg=MUTED, anchor="w").pack(fill="x", padx=14, pady=(2, 0))
+                 font=("Consolas", 7), bg=BG, fg=MUTED, anchor="w").pack(fill="x", padx=14, pady=(2, 0))
 
         # Role assignment is Owner- and Co-Owner-level, same as everything
         # else in this menu (see set_role in server/main.py) - the Owner
@@ -1090,11 +1090,11 @@ class SpecialMenuWindow(tk.Toplevel):
         # purely from OWNER_USERNAME and isn't a role that can be granted.
         role_row = tk.Frame(self, bg=BG)
         role_row.pack(fill="x", padx=14, pady=(6, 14))
-        tk.Label(role_row, text="Set role:", font=("Segoe UI", 9), bg=BG, fg=MUTED).pack(side="left", padx=(0, 8))
+        tk.Label(role_row, text="Set role:", font=("Consolas", 9), bg=BG, fg=MUTED).pack(side="left", padx=(0, 8))
         self.role_var = tk.StringVar(value="member")
         opt = tk.OptionMenu(role_row, self.role_var, "member", "trial_mod", "mod", "co_owner")
         opt.config(bg=CARD2, fg=TEXT, activebackground=CARD2, activeforeground=TEXT, relief="flat", bd=0,
-                  font=("Segoe UI", 9), highlightthickness=0, cursor="hand2")
+                  font=("Consolas", 9), highlightthickness=0, cursor="hand2")
         opt["menu"].config(bg=CARD2, fg=TEXT)
         opt.pack(side="left", padx=(0, 8))
         b(role_row, "Apply", self.do_set_role, ACC, "#ffffff").pack(side="left")
@@ -1418,17 +1418,17 @@ class SpecialMenuWindow(tk.Toplevel):
         win.grab_set()
 
         tk.Label(win, text="\U0001f4e2 Send to everyone",
-                 font=tkfont.Font(family="Segoe UI", size=13, weight="bold"),
+                 font=tkfont.Font(family="Consolas", size=13, weight="bold"),
                  bg=BG, fg=TEXT).pack(pady=(14, 2))
         tk.Label(win, text="Every account gets this as a notice next time they open the app.",
-                 font=("Segoe UI", 8), bg=BG, fg=MUTED, wraplength=340).pack(pady=(0, 8))
+                 font=("Consolas", 8), bg=BG, fg=MUTED, wraplength=340).pack(pady=(0, 8))
 
         txt = tk.Text(win, bg=CARD2, fg=TEXT, insertbackground=TEXT, relief="flat", bd=0,
-                     highlightthickness=0, font=("Segoe UI", 10), height=4, wrap="word")
+                     highlightthickness=0, font=("Consolas", 10), height=4, wrap="word")
         txt.pack(fill="both", expand=True, padx=14)
         txt.focus_set()
 
-        hint = tk.Label(win, text="", font=("Segoe UI", 8), bg=BG, fg=RED, wraplength=340)
+        hint = tk.Label(win, text="", font=("Consolas", 8), bg=BG, fg=RED, wraplength=340)
         hint.pack(pady=(4, 0))
 
         def send():
@@ -1449,11 +1449,11 @@ class SpecialMenuWindow(tk.Toplevel):
         row = tk.Frame(win, bg=BG)
         row.pack(pady=(8, 14))
         tk.Button(row, text="Cancel", command=win.destroy, bg=CARD2, fg=TEXT,
-                  activebackground="#2c1f52", activeforeground="#ffffff", relief="flat", bd=0,
-                  padx=14, pady=6, font=("Segoe UI", 9), cursor="hand2").pack(side="left", padx=4)
+                  activebackground="#16321a", activeforeground="#ffffff", relief="flat", bd=0,
+                  padx=14, pady=6, font=("Consolas", 9), cursor="hand2").pack(side="left", padx=4)
         tk.Button(row, text="Send", command=send, bg=ACC, fg="#ffffff",
                   activebackground=ACC, activeforeground="#ffffff", relief="flat", bd=0,
-                  padx=14, pady=6, font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="left", padx=4)
+                  padx=14, pady=6, font=("Consolas", 9, "bold"), cursor="hand2").pack(side="left", padx=4)
 
 
 class ModLogWindow(tk.Toplevel):
@@ -1478,22 +1478,22 @@ class ModLogWindow(tk.Toplevel):
         self.minsize(400, 300)
         self.transient(app)
 
-        tk.Label(self, text="Moderation log", font=tkfont.Font(family="Segoe UI", size=14, weight="bold"),
+        tk.Label(self, text="Moderation log", font=tkfont.Font(family="Consolas", size=14, weight="bold"),
                  bg=BG, fg=TEXT).pack(anchor="w", padx=14, pady=(14, 2))
         tk.Label(self, text="Most recent 200 actions, newest first.",
-                 font=("Segoe UI", 8), bg=BG, fg=MUTED, anchor="w").pack(fill="x", padx=14, pady=(0, 8))
+                 font=("Consolas", 8), bg=BG, fg=MUTED, anchor="w").pack(fill="x", padx=14, pady=(0, 8))
 
         frame = tk.Frame(self, bg=BG)
         frame.pack(fill="both", expand=True, padx=14, pady=(0, 10))
         txt = tk.Text(frame, bg=CARD, fg=TEXT, relief="flat", bd=0, highlightthickness=0,
-                      font=("Segoe UI", 9), wrap="word", state="normal", cursor="arrow")
+                      font=("Consolas", 9), wrap="word", state="normal", cursor="arrow")
         sb = tk.Scrollbar(frame, orient="vertical", command=txt.yview, bg=BG, troughcolor=BG,
                           activebackground=MUTED)
         txt.config(yscrollcommand=sb.set)
         txt.pack(side="left", fill="both", expand=True)
         sb.pack(side="right", fill="y")
-        txt.tag_config("who", foreground=ACC, font=("Segoe UI", 9, "bold"))
-        txt.tag_config("time", foreground=MUTED, font=("Segoe UI", 8))
+        txt.tag_config("who", foreground=ACC, font=("Consolas", 9, "bold"))
+        txt.tag_config("time", foreground=MUTED, font=("Consolas", 8))
         txt.tag_config("reason", foreground="#ffd166")
 
         if not entries:
@@ -1541,8 +1541,8 @@ class ModLogWindow(tk.Toplevel):
         txt.config(state="disabled")
 
         tk.Button(self, text="Close", command=self.destroy, bg=CARD2, fg=TEXT,
-                  activebackground="#2c1f52", activeforeground="#ffffff", relief="flat", bd=0,
-                  padx=14, pady=6, font=("Segoe UI", 9), cursor="hand2").pack(pady=(0, 14))
+                  activebackground="#16321a", activeforeground="#ffffff", relief="flat", bd=0,
+                  padx=14, pady=6, font=("Consolas", 9), cursor="hand2").pack(pady=(0, 14))
 
 
 # The reaction picker offered in ChatWindow's right-click menu - must match
@@ -1624,25 +1624,25 @@ class ChatWindow(tk.Toplevel):
         self._draw_avatar()
         names = tk.Frame(pad, bg=CARD)
         names.pack(side="left")
-        tk.Label(names, text=self.contact["name"], font=tkfont.Font(family="Segoe UI", size=13, weight="bold"),
+        tk.Label(names, text=self.contact["name"], font=tkfont.Font(family="Consolas", size=13, weight="bold"),
                  bg=CARD, fg=TEXT).pack(anchor="w")
         # Online/offline dot for this specific conversation - kept up to
         # date by the same 2-second poll that fetches messages (see
         # _apply_presence), separate from status_lbl below which tracks
         # call state instead.
-        self.presence_lbl = tk.Label(names, text="", font=("Segoe UI", 8), bg=CARD, fg=MUTED)
+        self.presence_lbl = tk.Label(names, text="", font=("Consolas", 8), bg=CARD, fg=MUTED)
         if self.net:
             self.presence_lbl.pack(anchor="w")
-        self.status_lbl = tk.Label(names, text=f"Idle \u00b7 as {self.me_display}", font=("Segoe UI", 9), bg=CARD, fg=MUTED)
+        self.status_lbl = tk.Label(names, text=f"Idle \u00b7 as {self.me_display}", font=("Consolas", 9), bg=CARD, fg=MUTED)
         self.status_lbl.pack(anchor="w")
-        self.call_btn = tk.Button(pad, text="\u260e Call", command=self.toggle_call, bg=GREEN, fg="#0d1220",
-                                  activebackground=GREEN, activeforeground="#0d1220", relief="flat", bd=0,
-                                  padx=12, pady=6, font=("Segoe UI", 9, "bold"), cursor="hand2")
+        self.call_btn = tk.Button(pad, text="\u260e Call", command=self.toggle_call, bg=GREEN, fg="#001400",
+                                  activebackground=GREEN, activeforeground="#001400", relief="flat", bd=0,
+                                  padx=12, pady=6, font=("Consolas", 9, "bold"), cursor="hand2")
         self.call_btn.pack(side="right")
         if self._kick_ok():
             tk.Button(pad, text="Kick", command=lambda: self._admin(True), bg=RED, fg="#ffffff",
                       activebackground=RED, activeforeground="#ffffff", relief="flat", bd=0,
-                      padx=10, pady=6, font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="right", padx=(0, 6))
+                      padx=10, pady=6, font=("Consolas", 9, "bold"), cursor="hand2").pack(side="right", padx=(0, 6))
         if self._kick_ok() and self.net:
             # Mute is net-only (there's nothing to mute in local/offline
             # chats) and same tier as Kick - a quick 30-minute mute right
@@ -1650,39 +1650,39 @@ class ChatWindow(tk.Toplevel):
             # durations still go through the Special Menu.
             tk.Button(pad, text="Mute", command=self._mute_from_chat, bg="#8a5a00", fg="#ffffff",
                       activebackground="#8a5a00", activeforeground="#ffffff", relief="flat", bd=0,
-                      padx=10, pady=6, font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="right", padx=(0, 6))
+                      padx=10, pady=6, font=("Consolas", 9, "bold"), cursor="hand2").pack(side="right", padx=(0, 6))
         if self._ban_ok():
             tk.Button(pad, text="Ban", command=lambda: self._admin(False), bg="#a3003f", fg="#ffffff",
                       activebackground="#a3003f", activeforeground="#ffffff", relief="flat", bd=0,
-                      padx=10, pady=6, font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="right", padx=(0, 6))
+                      padx=10, pady=6, font=("Consolas", 9, "bold"), cursor="hand2").pack(side="right", padx=(0, 6))
 
         self.txt = tk.Text(self, bg=BG, fg=TEXT, insertbackground=TEXT, relief="flat", bd=0,
-                           highlightthickness=0, font=("Segoe UI", 10), wrap="word", state="disabled")
+                           highlightthickness=0, font=("Consolas", 10), wrap="word", state="disabled")
         self.txt.pack(fill="both", expand=True, padx=14, pady=(0, 6))
         self.txt.tag_config("chat", foreground=TEXT)
         self.txt.tag_config("call", foreground=GREEN)
-        self.txt.tag_config("time", foreground=MUTED, font=("Segoe UI", 8))
-        self.txt.tag_config("me", foreground=ACC, font=("Segoe UI", 9, "bold"))
-        self.txt.tag_config("deleted", foreground=MUTED, font=("Segoe UI", 10, "italic"))
-        self.txt.tag_config("reactions", foreground=MUTED, font=("Segoe UI", 9))
+        self.txt.tag_config("time", foreground=MUTED, font=("Consolas", 8))
+        self.txt.tag_config("me", foreground=ACC, font=("Consolas", 9, "bold"))
+        self.txt.tag_config("deleted", foreground=MUTED, font=("Consolas", 10, "italic"))
+        self.txt.tag_config("reactions", foreground=MUTED, font=("Consolas", 9))
         if self.net:
             # Right-click a message to react to it, or edit/delete your own.
             self.txt.bind("<Button-3>", self._on_right_click)
 
-        self.typing_lbl = tk.Label(self, text="", font=("Segoe UI", 8, "italic"), bg=BG, fg=MUTED, anchor="w")
+        self.typing_lbl = tk.Label(self, text="", font=("Consolas", 8, "italic"), bg=BG, fg=MUTED, anchor="w")
         self.typing_lbl.pack(fill="x", padx=14)
 
         row = tk.Frame(self, bg=BG)
         row.pack(fill="x", padx=14, pady=(0, 12))
         self.entry = tk.Entry(row, bg=CARD2, fg=TEXT, insertbackground=TEXT, relief="flat", bd=0,
-                              highlightthickness=0, font=("Segoe UI", 10))
+                              highlightthickness=0, font=("Consolas", 10))
         self.entry.pack(side="left", fill="x", expand=True, padx=(0, 6), ipady=6)
         self.entry.bind("<Return>", lambda e: self.send())
         if self.net:
             self.entry.bind("<KeyRelease>", self._on_typing_key)
         tk.Button(row, text="Send", command=self.send, bg=ACC, fg="#ffffff", activebackground=ACC,
                   activeforeground="#ffffff", relief="flat", bd=0, padx=14, pady=6,
-                  font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="right")
+                  font=("Consolas", 9, "bold"), cursor="hand2").pack(side="right")
         self.entry.focus_set()
 
     def _draw_avatar(self):
@@ -1690,8 +1690,8 @@ class ChatWindow(tk.Toplevel):
         c.delete("all")
         c.create_oval(1, 1, 43, 43, fill=ACC, outline="")
         letter = (self.contact.get("name", "?")[:1] or "?").upper()
-        c.create_text(22, 22, text=letter, fill="#0d1220",
-                      font=tkfont.Font(family="Segoe UI", size=18, weight="bold"))
+        c.create_text(22, 22, text=letter, fill="#001400",
+                      font=tkfont.Font(family="Consolas", size=18, weight="bold"))
 
     def _ts(self):
         return datetime.datetime.now().strftime("%H:%M")
@@ -1837,7 +1837,7 @@ class ChatWindow(tk.Toplevel):
         self._initiated_call = False
         self._incoming = False
         self.status_lbl.config(text="Idle", fg=MUTED)
-        self.call_btn.config(text="\u260e Call", bg=GREEN, fg="#0d1220", activeforeground="#0d1220")
+        self.call_btn.config(text="\u260e Call", bg=GREEN, fg="#001400", activeforeground="#001400")
 
     def _start_poll(self):
         self._poll_thread = threading.Thread(target=self._poll_loop, daemon=True)
@@ -2043,7 +2043,7 @@ class ChatWindow(tk.Toplevel):
         win.transient(self)
         win.grab_set()
         box = tk.Text(win, width=40, height=4, bg=CARD2, fg=TEXT, insertbackground=TEXT, relief="flat",
-                      bd=0, highlightthickness=0, font=("Segoe UI", 10), wrap="word")
+                      bd=0, highlightthickness=0, font=("Consolas", 10), wrap="word")
         box.pack(padx=14, pady=(14, 8))
         box.insert("1.0", current_text)
         box.focus_set()
@@ -2063,12 +2063,12 @@ class ChatWindow(tk.Toplevel):
 
         btn_row = tk.Frame(win, bg=BG)
         btn_row.pack(pady=(0, 14))
-        tk.Button(btn_row, text="Cancel", command=win.destroy, bg=CARD2, fg=TEXT, activebackground="#2c1f52",
+        tk.Button(btn_row, text="Cancel", command=win.destroy, bg=CARD2, fg=TEXT, activebackground="#16321a",
                   activeforeground="#ffffff", relief="flat", bd=0, padx=14, pady=6,
-                  font=("Segoe UI", 9), cursor="hand2").pack(side="left", padx=4)
+                  font=("Consolas", 9), cursor="hand2").pack(side="left", padx=4)
         tk.Button(btn_row, text="Save", command=save, bg=ACC, fg="#ffffff", activebackground=ACC,
                   activeforeground="#ffffff", relief="flat", bd=0, padx=14, pady=6,
-                  font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="left", padx=4)
+                  font=("Consolas", 9, "bold"), cursor="hand2").pack(side="left", padx=4)
 
     def _delete_message(self, mid):
         if not messagebox.askyesno("Delete message", "Delete this message for both of you?\n\n"
@@ -2112,7 +2112,7 @@ class ChatWindow(tk.Toplevel):
             elif not self.in_call and not self.calling and not self._incoming:
                 self._incoming = True
                 self.status_lbl.config(text="Incoming call\u2026", fg=ACC)
-                self.call_btn.config(text="\u260e Answer", bg=GREEN, fg="#0d1220", activeforeground="#0d1220")
+                self.call_btn.config(text="\u260e Answer", bg=GREEN, fg="#001400", activeforeground="#001400")
                 _ring()
         elif state == "ended":
             was = self.in_call or self.calling or self._incoming or self._initiated_call
@@ -2187,47 +2187,47 @@ class LoginWindow(tk.Toplevel):
         self._on_ready = on_ready
         self.pending_username = None
 
-        tk.Label(self, text="App Launcher Network", font=tkfont.Font(family="Segoe UI", size=16, weight="bold"),
+        tk.Label(self, text="App Launcher Network", font=tkfont.Font(family="Consolas", size=16, weight="bold"),
                  bg=BG, fg=TEXT).pack(pady=(16, 2))
         tk.Label(self, text="Same server, same people, on any PC.",
-                 font=("Segoe UI", 9), bg=BG, fg=MUTED).pack(pady=(0, 12))
+                 font=("Consolas", 9), bg=BG, fg=MUTED).pack(pady=(0, 12))
 
         self.form_frame = tk.Frame(self, bg=BG)
         self.form_frame.pack(padx=22, pady=(0, 8))
         form = self.form_frame
 
-        tk.Label(form, text="Server URL", font=("Segoe UI", 9), bg=BG, fg=MUTED, anchor="w").pack(fill="x")
+        tk.Label(form, text="Server URL", font=("Consolas", 9), bg=BG, fg=MUTED, anchor="w").pack(fill="x")
         self.url_var = tk.StringVar(value=(AppNet.load_session() or {}).get("url", DEFAULT_SERVER_URL))
         tk.Entry(form, textvariable=self.url_var, bg=CARD2, fg=TEXT, insertbackground=TEXT,
-                 relief="flat", bd=0, highlightthickness=0, font=("Segoe UI", 10), width=40).pack(fill="x", ipady=4, pady=(2, 10))
+                 relief="flat", bd=0, highlightthickness=0, font=("Consolas", 10), width=40).pack(fill="x", ipady=4, pady=(2, 10))
 
-        tk.Label(form, text="Username", font=("Segoe UI", 9), bg=BG, fg=MUTED, anchor="w").pack(fill="x")
+        tk.Label(form, text="Username", font=("Consolas", 9), bg=BG, fg=MUTED, anchor="w").pack(fill="x")
         self.user_var = tk.StringVar()
         tk.Entry(form, textvariable=self.user_var, bg=CARD2, fg=TEXT, insertbackground=TEXT,
-                 relief="flat", bd=0, highlightthickness=0, font=("Segoe UI", 10), width=40).pack(fill="x", ipady=4, pady=(2, 10))
+                 relief="flat", bd=0, highlightthickness=0, font=("Consolas", 10), width=40).pack(fill="x", ipady=4, pady=(2, 10))
 
-        tk.Label(form, text="Password", font=("Segoe UI", 9), bg=BG, fg=MUTED, anchor="w").pack(fill="x")
+        tk.Label(form, text="Password", font=("Consolas", 9), bg=BG, fg=MUTED, anchor="w").pack(fill="x")
         self.pass_var = tk.StringVar()
         tk.Entry(form, textvariable=self.pass_var, show="*", bg=CARD2, fg=TEXT, insertbackground=TEXT,
-                 relief="flat", bd=0, highlightthickness=0, font=("Segoe UI", 10), width=40).pack(fill="x", ipady=4, pady=(2, 10))
+                 relief="flat", bd=0, highlightthickness=0, font=("Consolas", 10), width=40).pack(fill="x", ipady=4, pady=(2, 10))
 
-        tk.Label(form, text="Email (only needed to create an account)", font=("Segoe UI", 9), bg=BG, fg=MUTED, anchor="w").pack(fill="x")
+        tk.Label(form, text="Email (only needed to create an account)", font=("Consolas", 9), bg=BG, fg=MUTED, anchor="w").pack(fill="x")
         self.email_var = tk.StringVar()
         tk.Entry(form, textvariable=self.email_var, bg=CARD2, fg=TEXT, insertbackground=TEXT,
-                 relief="flat", bd=0, highlightthickness=0, font=("Segoe UI", 10), width=40).pack(fill="x", ipady=4, pady=(2, 2))
+                 relief="flat", bd=0, highlightthickness=0, font=("Consolas", 10), width=40).pack(fill="x", ipady=4, pady=(2, 2))
 
-        self.hint = tk.Label(self, text="", font=("Segoe UI", 9), bg=BG, fg=RED, wraplength=340)
+        self.hint = tk.Label(self, text="", font=("Consolas", 9), bg=BG, fg=RED, wraplength=340)
         self.hint.pack(pady=(6, 2))
 
         self.button_row = tk.Frame(self, bg=BG)
         self.button_row.pack(pady=(4, 16))
         self.signin_btn = tk.Button(self.button_row, text="Sign in", command=self._login, bg=ACC, fg="#ffffff",
                   activebackground=ACC, activeforeground="#ffffff", relief="flat", bd=0,
-                  padx=18, pady=7, font=("Segoe UI", 10, "bold"), cursor="hand2")
+                  padx=18, pady=7, font=("Consolas", 10, "bold"), cursor="hand2")
         self.signin_btn.pack(side="left", padx=6)
         self.create_btn = tk.Button(self.button_row, text="Create account", command=self._create_account, bg=CARD2, fg=TEXT,
-                  activebackground="#2c1f52", activeforeground="#ffffff", relief="flat", bd=0,
-                  padx=14, pady=7, font=("Segoe UI", 10), cursor="hand2")
+                  activebackground="#16321a", activeforeground="#ffffff", relief="flat", bd=0,
+                  padx=14, pady=7, font=("Consolas", 10), cursor="hand2")
         self.create_btn.pack(side="left", padx=6)
         self.pass_var.trace_add("write", lambda *_: self.hint.config(text=""))
 
@@ -2237,10 +2237,10 @@ class LoginWindow(tk.Toplevel):
         self.verify_frame = tk.Frame(self, bg=BG)
         vform = tk.Frame(self.verify_frame, bg=BG)
         vform.pack(padx=22, pady=(0, 8))
-        tk.Label(vform, text="Verification code", font=("Segoe UI", 9), bg=BG, fg=MUTED, anchor="w").pack(fill="x")
+        tk.Label(vform, text="Verification code", font=("Consolas", 9), bg=BG, fg=MUTED, anchor="w").pack(fill="x")
         self.code_var = tk.StringVar()
         tk.Entry(vform, textvariable=self.code_var, bg=CARD2, fg=TEXT, insertbackground=TEXT,
-                 relief="flat", bd=0, highlightthickness=0, font=("Segoe UI", 12), justify="center",
+                 relief="flat", bd=0, highlightthickness=0, font=("Consolas", 12), justify="center",
                  width=40).pack(fill="x", ipady=4, pady=(2, 2))
         self.code_var.trace_add("write", lambda *_: self.hint.config(text=""))
 
@@ -2248,15 +2248,15 @@ class LoginWindow(tk.Toplevel):
         vrow.pack(pady=(10, 4))
         self.verify_btn = tk.Button(vrow, text="Verify", command=self._verify, bg=ACC, fg="#ffffff",
                   activebackground=ACC, activeforeground="#ffffff", relief="flat", bd=0,
-                  padx=18, pady=7, font=("Segoe UI", 10, "bold"), cursor="hand2")
+                  padx=18, pady=7, font=("Consolas", 10, "bold"), cursor="hand2")
         self.verify_btn.pack(side="left", padx=6)
         self.resend_btn = tk.Button(vrow, text="Resend code", command=self._resend, bg=CARD2, fg=TEXT,
-                  activebackground="#2c1f52", activeforeground="#ffffff", relief="flat", bd=0,
-                  padx=14, pady=7, font=("Segoe UI", 10), cursor="hand2")
+                  activebackground="#16321a", activeforeground="#ffffff", relief="flat", bd=0,
+                  padx=14, pady=7, font=("Consolas", 10), cursor="hand2")
         self.resend_btn.pack(side="left", padx=6)
         tk.Button(self.verify_frame, text="← Back", command=self._back_to_form, bg=BG, fg=MUTED,
                   activebackground=BG, activeforeground=TEXT, relief="flat", bd=0,
-                  font=("Segoe UI", 9, "underline"), cursor="hand2").pack(pady=(0, 16))
+                  font=("Consolas", 9, "underline"), cursor="hand2").pack(pady=(0, 16))
 
     def _set_busy(self, busy):
         state = "disabled" if busy else "normal"
@@ -2487,9 +2487,9 @@ class ProfileWindow(tk.Toplevel):
         self._refresh()
 
     def _build(self):
-        tk.Label(self, text="Your Profile", font=tkfont.Font(family="Segoe UI", size=16, weight="bold"),
+        tk.Label(self, text="Your Profile", font=tkfont.Font(family="Consolas", size=16, weight="bold"),
                  bg=BG, fg=TEXT).pack(pady=(14, 2))
-        self.sub_lbl = tk.Label(self, font=("Segoe UI", 9), bg=BG, fg=MUTED)
+        self.sub_lbl = tk.Label(self, font=("Consolas", 9), bg=BG, fg=MUTED)
         self.sub_lbl.pack()
 
         self.preview = tk.Label(self, bg=BG)
@@ -2498,16 +2498,16 @@ class ProfileWindow(tk.Toplevel):
         self.name_var = tk.StringVar()
         name_row = tk.Frame(self, bg=BG)
         name_row.pack(pady=(4, 2))
-        tk.Label(name_row, text="Name:", font=("Segoe UI", 10), bg=BG, fg=TEXT).pack(side="left", padx=(0, 8))
+        tk.Label(name_row, text="Name:", font=("Consolas", 10), bg=BG, fg=TEXT).pack(side="left", padx=(0, 8))
         self.name_entry = tk.Entry(name_row, textvariable=self.name_var, bg=CARD2, fg=TEXT,
                                    insertbackground=TEXT, relief="flat", bd=0, highlightthickness=0,
-                                   font=("Segoe UI", 10), width=24)
+                                   font=("Consolas", 10), width=24)
         self.name_entry.pack(side="left", ipady=4, padx=(0, 8))
         tk.Button(name_row, text="Save name", command=self._save_name, bg=ACC, fg="#ffffff",
                   activebackground=ACC, activeforeground="#ffffff", relief="flat", bd=0,
-                  padx=12, pady=5, font=("Segoe UI", 9, "bold"), cursor="hand2").pack(side="left")
+                  padx=12, pady=5, font=("Consolas", 9, "bold"), cursor="hand2").pack(side="left")
 
-        tk.Label(self, text="Pick a default picture", font=("Segoe UI", 9, "bold"), bg=BG, fg=MUTED
+        tk.Label(self, text="Pick a default picture", font=("Consolas", 9, "bold"), bg=BG, fg=MUTED
                  ).pack(pady=(12, 4))
         grid = tk.Frame(self, bg=BG)
         grid.pack()
@@ -2521,11 +2521,11 @@ class ProfileWindow(tk.Toplevel):
             b.grid(row=i // 4, column=i % 4, padx=7, pady=7)
 
         tk.Button(self, text="Choose a picture from your PC\u2026", command=self._browse,
-                  bg=CARD2, fg=TEXT, activebackground="#2c1f52", activeforeground="#ffffff",
-                  relief="flat", bd=0, padx=14, pady=7, font=("Segoe UI", 9), cursor="hand2"
+                  bg=CARD2, fg=TEXT, activebackground="#16321a", activeforeground="#ffffff",
+                  relief="flat", bd=0, padx=14, pady=7, font=("Consolas", 9), cursor="hand2"
                   ).pack(pady=(12, 4))
 
-        self.owner_lbl = tk.Label(self, font=("Segoe UI", 9), bg=BG, fg=MUTED)
+        self.owner_lbl = tk.Label(self, font=("Consolas", 9), bg=BG, fg=MUTED)
         self.owner_lbl.pack(pady=(8, 12))
 
     def _refresh(self):

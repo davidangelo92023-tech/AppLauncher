@@ -12,16 +12,16 @@ from tkinter import messagebox
 
 # ---------------- shared helpers ----------------
 
-BG = "#07050f"
-CARD = "#150f28"
-CARD2 = "#221a3d"
-TEXT = "#eaf2ff"
-MUTED = "#8f87c2"
-ACC = "#00f0ff"
-GREEN = "#39ff8c"
-RED = "#ff2255"
+BG = "#020602"
+CARD = "#0a140a"
+CARD2 = "#122012"
+TEXT = "#cfffd8"
+MUTED = "#5a9c6a"
+ACC = "#33ff33"
+GREEN = "#39ff14"
+RED = "#ff3333"
 
-ACCENTS = ["#00f0ff", "#ff2bd6", "#39ff8c", "#ffb86c", "#9d7bff", "#ff2255", "#4fd6d6", "#ffe066"]
+ACCENTS = ["#33ff33", "#00ffaa", "#39ff14", "#ffb86c", "#9d7bff", "#ff3333", "#4fd6d6", "#ffe066"]
 
 SCORES_FILE = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "AppLauncher", "games.json")
 
@@ -47,23 +47,23 @@ def _save_scores(data):
 def _header(win, parent, title, subtitle=""):
     bar = tk.Frame(win, bg=BG)
     bar.pack(fill="x", padx=14, pady=(10, 4))
-    tk.Label(bar, text=title, font=tkfont.Font(family="Segoe UI", size=14, weight="bold"),
+    tk.Label(bar, text=title, font=tkfont.Font(family="Consolas", size=14, weight="bold"),
              bg=BG, fg=TEXT).pack(side="left")
     if subtitle:
-        tk.Label(bar, text="   " + subtitle, font=("Segoe UI", 8), bg=BG,
+        tk.Label(bar, text="   " + subtitle, font=("Consolas", 8), bg=BG,
                  fg=MUTED).pack(side="left", anchor="s", pady=(0, 4))
 
 
-def _btn(parent, text, cmd, color=ACC, fg="#0d1220"):
+def _btn(parent, text, cmd, color=ACC, fg="#001400"):
     return tk.Button(parent, text=text, command=cmd, bg=color, fg=fg,
                      activebackground=color, activeforeground=fg, relief="flat", bd=0,
-                     padx=14, pady=5, font=("Segoe UI", 9, "bold"), cursor="hand2")
+                     padx=14, pady=5, font=("Consolas", 9, "bold"), cursor="hand2")
 
 
 def _btn2(parent, text, cmd):
     return tk.Button(parent, text=text, command=cmd, bg=CARD2, fg=TEXT,
-                     activebackground="#2c1f52", activeforeground="#ffffff",
-                     relief="flat", bd=0, padx=12, pady=5, font=("Segoe UI", 9), cursor="hand2")
+                     activebackground="#16321a", activeforeground="#ffffff",
+                     relief="flat", bd=0, padx=12, pady=5, font=("Consolas", 9), cursor="hand2")
 
 
 class GamesWindow(tk.Toplevel):
@@ -95,11 +95,11 @@ class GamesWindow(tk.Toplevel):
             for c in range(2):
                 grid.columnconfigure(c, weight=1)
             tk.Button(cell, text=name, command=lambda c=cls: c(self),
-                      bg=color, fg="#0d1220", activebackground=color,
-                      activeforeground="#0d1220", relief="flat", bd=0,
-                      font=("Segoe UI", 11, "bold"), pady=8, cursor="hand2"
+                      bg=color, fg="#001400", activebackground=color,
+                      activeforeground="#001400", relief="flat", bd=0,
+                      font=("Consolas", 11, "bold"), pady=8, cursor="hand2"
                       ).pack(fill="x", padx=8, pady=(8, 2))
-            tk.Label(cell, text=desc, font=("Segoe UI", 8), bg=CARD, fg=MUTED).pack(padx=8, pady=(0, 8))
+            tk.Label(cell, text=desc, font=("Consolas", 8), bg=CARD, fg=MUTED).pack(padx=8, pady=(0, 8))
 
 # ---------------- Pong ----------------
 
@@ -118,9 +118,9 @@ class PongWindow(tk.Toplevel):
 
         _header(self, self, "Pong", "first to 7 \u2014 move your mouse")
         self.score_lbl = tk.Label(self, text="You 0  \u2014  AI 0   Best 0",
-                                  font=("Segoe UI", 10, "bold"), bg=BG, fg=TEXT)
+                                  font=("Consolas", 10, "bold"), bg=BG, fg=TEXT)
         self.score_lbl.pack()
-        self.cv = tk.Canvas(self, width=self.W, height=self.H, bg="#0a0714", highlightthickness=0)
+        self.cv = tk.Canvas(self, width=self.W, height=self.H, bg="#020602", highlightthickness=0)
         self.cv.pack(padx=16, pady=8)
         self.cv.bind("<Motion>", self._mouse)
         self.cv.bind("<B1-Motion>", self._mouse)
@@ -232,21 +232,21 @@ class PongWindow(tk.Toplevel):
         c = self.cv
         c.delete("all")
         c.create_rectangle(20, self.py, 20 + self.PW, self.py + self.PH,
-                           fill="#00f0ff", outline="")
+                           fill="#33ff33", outline="")
         c.create_rectangle(self.W - 20 - self.PW, self.ay, self.W - 20, self.ay + self.PH,
-                           fill="#ff2255", outline="")
+                           fill="#ff3333", outline="")
         for y in range(10, self.H, 26):
             c.create_rectangle(self.W / 2 - 2, y, self.W / 2 + 2, y + 12, fill=MUTED, outline="")
         c.create_oval(self.bx - 7, self.by - 7, self.bx + 7, self.by + 7,
-                      fill="#eaf2ff", outline="")
+                      fill="#cfffd8", outline="")
         self.score_lbl.config(text=f"You {self.pscore}  \u2014  AI {self.ascore}   Best {max(self.best, self.pscore)}")
         if self.gameover:
             win = self.pscore > self.ascore
             c.create_text(self.W // 2, self.H // 2 - 18, text="YOU WIN!" if win else "AI WINS",
                           fill=GREEN if win else RED,
-                          font=tkfont.Font(family="Segoe UI", size=30, weight="bold"))
+                          font=tkfont.Font(family="Consolas", size=30, weight="bold"))
             c.create_text(self.W // 2, self.H // 2 + 22,
-                          text="press R to restart", fill=TEXT, font=("Segoe UI", 12))
+                          text="press R to restart", fill=TEXT, font=("Consolas", 12))
 
 
 # ---------------- Chess ----------------
@@ -605,7 +605,7 @@ class ChessWindow(tk.Toplevel):
         self.diff = "Medium"
 
         _header(self, self, "\u265F  Chess vs AI", "click a piece, then a highlighted square")
-        self.status_lbl = tk.Label(self, text="Your move", font=("Segoe UI", 10, "bold"),
+        self.status_lbl = tk.Label(self, text="Your move", font=("Consolas", 10, "bold"),
                                    bg=BG, fg=TEXT)
         self.status_lbl.pack(anchor="w", padx=14)
 
@@ -621,12 +621,12 @@ class ChessWindow(tk.Toplevel):
         _btn2(side, "New game", self._new_game).pack(fill="x", pady=3)
         _btn2(side, "Play as Black", self._switch_sides).pack(fill="x", pady=3)
         _btn2(side, "Undo move", self._undo).pack(fill="x", pady=3)
-        tk.Label(side, text="AI difficulty", font=("Segoe UI", 8), bg=BG, fg=MUTED).pack(anchor="w", pady=(12, 2))
+        tk.Label(side, text="AI difficulty", font=("Consolas", 8), bg=BG, fg=MUTED).pack(anchor="w", pady=(12, 2))
         self.diff_var = tk.StringVar(value=self.diff)
         om = tk.OptionMenu(side, self.diff_var, *self.DIFFS.keys())
-        om.config(bg=CARD2, fg=TEXT, activebackground="#2c1f52", activeforeground="#ffffff",
-                  relief="flat", bd=0, highlightthickness=0, font=("Segoe UI", 9), cursor="hand2")
-        om["menu"].config(bg=CARD2, fg=TEXT, activebackground="#2c1f52", bd=0)
+        om.config(bg=CARD2, fg=TEXT, activebackground="#16321a", activeforeground="#ffffff",
+                  relief="flat", bd=0, highlightthickness=0, font=("Consolas", 9), cursor="hand2")
+        om["menu"].config(bg=CARD2, fg=TEXT, activebackground="#16321a", bd=0)
         om.pack(fill="x")
         tk.Label(side, text="", bg=BG).pack(fill="y", expand=True)
 
@@ -676,7 +676,7 @@ class ChessWindow(tk.Toplevel):
                 dr, dc = self._sq(*k)
                 c.create_rectangle(dc * self.CELL, dr * self.CELL, dc * self.CELL + self.CELL,
                                    dr * self.CELL + self.CELL, outline=RED, width=4)
-        font = tkfont.Font(family="Segoe UI Symbol", size=34)
+        font = tkfont.Font(family="Consolas Symbol", size=34)
         for r in range(8):
             for col in range(8):
                 p = self.engine.board[r][col]
@@ -804,7 +804,7 @@ class TicTacToeWindow(tk.Toplevel):
         self.scores = {"X": 0, "O": 0, "T": 0}
 
         _header(self, self, "Tic-Tac-Toe", "you are X")
-        self.lbl = tk.Label(self, text="Your turn", font=("Segoe UI", 11, "bold"), bg=BG, fg=TEXT)
+        self.lbl = tk.Label(self, text="Your turn", font=("Consolas", 11, "bold"), bg=BG, fg=TEXT)
         self.lbl.pack()
         self.cv = tk.Canvas(self, width=3 * self.SIZE, height=3 * self.SIZE, bg=BG, highlightthickness=0)
         self.cv.pack(padx=16, pady=8)
@@ -812,7 +812,7 @@ class TicTacToeWindow(tk.Toplevel):
         row = tk.Frame(self, bg=BG)
         row.pack(pady=(0, 12))
         _btn2(row, "New game", self._reset).pack(side="left", padx=4)
-        self.score_lbl = tk.Label(row, text="X 0 - 0 O  |  0 draws", font=("Segoe UI", 9),
+        self.score_lbl = tk.Label(row, text="X 0 - 0 O  |  0 draws", font=("Consolas", 9),
                                   bg=BG, fg=MUTED)
         self.score_lbl.pack(side="left", padx=12)
         self._draw()
@@ -827,7 +827,7 @@ class TicTacToeWindow(tk.Toplevel):
         for i in range(1, 3):
             c.create_line(i * self.SIZE, 8, i * self.SIZE, 3 * self.SIZE - 8, fill=CARD2, width=4)
             c.create_line(8, i * self.SIZE, 3 * self.SIZE - 8, i * self.SIZE, fill=CARD2, width=4)
-        font = tkfont.Font(family="Segoe UI", size=64, weight="bold")
+        font = tkfont.Font(family="Consolas", size=64, weight="bold")
         for i in range(9):
             r, col = divmod(i, 3)
             x = col * self.SIZE + self.SIZE // 2
@@ -946,7 +946,7 @@ class Connect4Window(tk.Toplevel):
         self.thinking = False
 
         _header(self, self, "Connect 4", "click a column to drop - you are red")
-        self.lbl = tk.Label(self, text="Your move", font=("Segoe UI", 11, "bold"), bg=BG, fg=TEXT)
+        self.lbl = tk.Label(self, text="Your move", font=("Consolas", 11, "bold"), bg=BG, fg=TEXT)
         self.lbl.pack()
         self.cv = tk.Canvas(self, width=self.COLS * self.CELL, height=self.ROWS * self.CELL,
                             bg=BG, highlightthickness=0)
@@ -1144,11 +1144,11 @@ class SnakeWindow(tk.Toplevel):
         self._reset_state()
 
         _header(self, self, "Snake", "use arrow keys")
-        self.score_lbl = tk.Label(self, text="Score 0   High 0", font=("Segoe UI", 10, "bold"),
+        self.score_lbl = tk.Label(self, text="Score 0   High 0", font=("Consolas", 10, "bold"),
                                   bg=BG, fg=TEXT)
         self.score_lbl.pack()
         self.cv = tk.Canvas(self, width=self.COLS * self.CELL, height=self.ROWS * self.CELL,
-                            bg="#0a0714", highlightthickness=0)
+                            bg="#020602", highlightthickness=0)
         self.cv.pack(padx=16, pady=8)
         self.bind("<KeyPress>", self._key)
         self.focus_set()
@@ -1202,14 +1202,14 @@ class SnakeWindow(tk.Toplevel):
         for x, y in self.snake[:-1]:
             c.create_rectangle(x * self.CELL + 1, y * self.CELL + 1,
                                (x + 1) * self.CELL - 1, (y + 1) * self.CELL - 1,
-                               fill="#39ff8c", outline="#1f8f56")
+                               fill="#39ff14", outline="#1f8f56")
         hx, hy = self.snake[-1]
         c.create_rectangle(hx * self.CELL + 1, hy * self.CELL + 1,
                            (hx + 1) * self.CELL - 1, (hy + 1) * self.CELL - 1,
                            fill="#9dffc4", outline="#1f8f56")
         fx, fy = self.food
         c.create_oval(fx * self.CELL + 4, fy * self.CELL + 4,
-                      (fx + 1) * self.CELL - 4, (fy + 1) * self.CELL - 4, fill="#ff2255", outline="")
+                      (fx + 1) * self.CELL - 4, (fy + 1) * self.CELL - 4, fill="#ff3333", outline="")
         self.score_lbl.config(text=f"Score {self.score}   High {max(self.high, self.score)}")
         if self.dead:
             if self.score > self.high:
@@ -1218,10 +1218,10 @@ class SnakeWindow(tk.Toplevel):
                 data["snake"] = self.high
                 _save_scores(data)
             c.create_text(self.cv.winfo_width() // 2, self.cv.winfo_height() // 2 - 20,
-                          text="GAME OVER", fill=RED, font=tkfont.Font(family="Segoe UI", size=30, weight="bold"))
+                          text="GAME OVER", fill=RED, font=tkfont.Font(family="Consolas", size=30, weight="bold"))
             c.create_text(self.cv.winfo_width() // 2, self.cv.winfo_height() // 2 + 24,
                           text=f"Score {self.score}   High {self.high}   \u2014  press R to restart",
-                          fill=TEXT, font=("Segoe UI", 12))
+                          fill=TEXT, font=("Consolas", 12))
 
 
 # ---------------- 2048 ----------------
@@ -1242,7 +1242,7 @@ class Tile2048Window(tk.Toplevel):
         self._reset_state()
 
         _header(self, self, "2048", "arrow keys to slide and merge")
-        self.lbl = tk.Label(self, text="Score 0   High 0", font=("Segoe UI", 11, "bold"), bg=BG, fg=TEXT)
+        self.lbl = tk.Label(self, text="Score 0   High 0", font=("Consolas", 11, "bold"), bg=BG, fg=TEXT)
         self.lbl.pack()
         self.cv = tk.Canvas(self, width=self.SIZE * self.CELL + 12, height=self.SIZE * self.CELL + 12,
                             bg=CARD, highlightthickness=0)
@@ -1340,21 +1340,21 @@ class Tile2048Window(tk.Toplevel):
                 y = r * self.CELL + pad
                 v = self.grid[r][col]
                 c.create_rectangle(x, y, x + self.CELL - 2 * pad, y + self.CELL - 2 * pad,
-                                   fill="#221a3d", outline="")
+                                   fill="#122012", outline="")
                 if v:
                     c.create_rectangle(x, y, x + self.CELL - 2 * pad, y + self.CELL - 2 * pad,
                                        fill=self.COLORS.get(v, "#3c3c3c"), outline="")
                     fg = "#776e65" if v < 8 else "#f9f6f2"
                     c.create_text(x + (self.CELL - 2 * pad) // 2, y + (self.CELL - 2 * pad) // 2,
                                   text=str(v), fill=fg,
-                                  font=tkfont.Font(family="Segoe UI", size=30 if v < 100 else 22, weight="bold"))
+                                  font=tkfont.Font(family="Consolas", size=30 if v < 100 else 22, weight="bold"))
         if self.over:
             c.create_rectangle(0, 0, 999, 999, fill="#000000", stipple="gray50")
             c.create_text(self.cv.winfo_width() // 2, self.cv.winfo_height() // 2 - 12,
                           text="GAME OVER", fill=RED,
-                          font=tkfont.Font(family="Segoe UI", size=30, weight="bold"))
+                          font=tkfont.Font(family="Consolas", size=30, weight="bold"))
             c.create_text(self.cv.winfo_width() // 2, self.cv.winfo_height() // 2 + 24,
-                          text=f"Score {self.score} \u2014 press R to restart", fill=TEXT, font=("Segoe UI", 12))
+                          text=f"Score {self.score} \u2014 press R to restart", fill=TEXT, font=("Consolas", 12))
 
 
 # ---------------- Wordle ----------------
@@ -1444,17 +1444,17 @@ class WordleWindow(tk.Toplevel):
             if ri == 2:
                 tk.Button(rf, text="\u232B", command=self._back, bg=WORD_COLORS["key"], fg=TEXT,
                           activebackground="#6a6a6c", activeforeground=TEXT, relief="flat", bd=0,
-                          width=3, font=("Segoe UI", 10), cursor="hand2").pack(side="left", padx=2, pady=2)
+                          width=3, font=("Consolas", 10), cursor="hand2").pack(side="left", padx=2, pady=2)
             for ch in row:
                 b = tk.Button(rf, text=ch, command=lambda c=ch: self._type(c),
                               bg=WORD_COLORS["key"], fg=TEXT, activebackground="#6a6a6c",
                               activeforeground=TEXT, relief="flat", bd=0, width=3,
-                              font=("Segoe UI", 10, "bold"), cursor="hand2")
+                              font=("Consolas", 10, "bold"), cursor="hand2")
                 b.pack(side="left", padx=2, pady=2)
             if ri == 2:
                 tk.Button(rf, text="ENTER", command=self._submit, bg=WORD_COLORS["key"], fg=TEXT,
                           activebackground="#6a6a6c", activeforeground=TEXT, relief="flat", bd=0,
-                          width=5, font=("Segoe UI", 10, "bold"), cursor="hand2").pack(side="left", padx=2, pady=2)
+                          width=5, font=("Consolas", 10, "bold"), cursor="hand2").pack(side="left", padx=2, pady=2)
 
     def _key(self, e):
         if e.keysym == "Return":
@@ -1528,10 +1528,10 @@ class WordleWindow(tk.Toplevel):
                                    fill=fill, outline="#3a3a3c" if not fb else fill, width=2)
                 if ch:
                     c.create_text(x + (self.CELL - 8) // 2, y + (self.CELL - 8) // 2, text=ch,
-                                  fill="#ffffff", font=tkfont.Font(family="Segoe UI", size=22, weight="bold"))
+                                  fill="#ffffff", font=tkfont.Font(family="Consolas", size=22, weight="bold"))
         if self.done:
             c.create_text(self.cv.winfo_width() // 2, self.cv.winfo_height() // 2,
-                          text="New game?  press R", fill=TEXT, font=("Segoe UI", 12, "bold"))
+                          text="New game?  press R", fill=TEXT, font=("Consolas", 12, "bold"))
 
     def _win(self):
         tries = len(self.guesses)
@@ -1560,7 +1560,7 @@ class MemoryWindow(tk.Toplevel):
         self._reset()
 
         _header(self, self, "Memory", "flip two cards to find pairs")
-        self.lbl = tk.Label(self, text="Moves 0   High 0", font=("Segoe UI", 10, "bold"), bg=BG, fg=TEXT)
+        self.lbl = tk.Label(self, text="Moves 0   High 0", font=("Consolas", 10, "bold"), bg=BG, fg=TEXT)
         self.lbl.pack()
         self.cv = tk.Canvas(self, width=self.N * self.CELL + 20, height=self.N * self.CELL + 20,
                             bg=BG, highlightthickness=0)
@@ -1636,18 +1636,18 @@ class MemoryWindow(tk.Toplevel):
             if show:
                 c.create_text(x + (self.CELL - 8) // 2, y + (self.CELL - 8) // 2,
                               text=self.cards[i], fill=TEXT,
-                              font=tkfont.Font(family="Segoe UI Symbol", size=34))
+                              font=tkfont.Font(family="Consolas Symbol", size=34))
             elif not self.finished:
                 c.create_text(x + (self.CELL - 8) // 2, y + (self.CELL - 8) // 2,
-                              text="\u2753", fill="#0d1220",
-                              font=tkfont.Font(family="Segoe UI", size=26))
+                              text="\u2753", fill="#001400",
+                              font=tkfont.Font(family="Consolas", size=26))
 
 
 # ---------------- Minesweeper ----------------
 
 MINE_NUM_COLORS = {
-    1: "#00f0ff", 2: "#39ff8c", 3: "#ff2255", 4: "#9d7bff",
-    5: "#ffb86c", 6: "#4fd6d6", 7: "#eaf2ff", 8: "#8f87c2",
+    1: "#33ff33", 2: "#39ff14", 3: "#ff3333", 4: "#9d7bff",
+    5: "#ffb86c", 6: "#4fd6d6", 7: "#cfffd8", 8: "#5a9c6a",
 }
 
 
@@ -1665,10 +1665,10 @@ class MinesweeperWindow(tk.Toplevel):
         self._reset()
 
         _header(self, self, "Minesweeper", "left-click to clear, right-click to flag")
-        self.lbl = tk.Label(self, text="", font=("Segoe UI", 10, "bold"), bg=BG, fg=TEXT)
+        self.lbl = tk.Label(self, text="", font=("Consolas", 10, "bold"), bg=BG, fg=TEXT)
         self.lbl.pack()
         self.cv = tk.Canvas(self, width=self.N * self.CELL, height=self.N * self.CELL,
-                            bg="#0a0714", highlightthickness=0)
+                            bg="#020602", highlightthickness=0)
         self.cv.pack(padx=16, pady=8)
         self.cv.bind("<Button-1>", self._left_click)
         self.cv.bind("<Button-3>", self._right_click)
@@ -1794,16 +1794,16 @@ class MinesweeperWindow(tk.Toplevel):
                                    fill=fill, outline="")
                 if self.mine[i]:
                     c.create_text(x + self.CELL / 2, y + self.CELL / 2, text="\U0001f4a3",
-                                  font=tkfont.Font(family="Segoe UI Emoji", size=16))
+                                  font=tkfont.Font(family="Consolas Emoji", size=16))
                 elif self.adjacent[i] > 0:
                     n = self.adjacent[i]
                     c.create_text(x + self.CELL / 2, y + self.CELL / 2, text=str(n),
                                   fill=MINE_NUM_COLORS.get(n, TEXT),
-                                  font=tkfont.Font(family="Segoe UI", size=14, weight="bold"))
+                                  font=tkfont.Font(family="Consolas", size=14, weight="bold"))
             else:
                 c.create_rectangle(x + pad, y + pad, x + self.CELL - pad, y + self.CELL - pad,
                                    fill=ACC, outline="")
                 if self.flagged[i]:
                     c.create_text(x + self.CELL / 2, y + self.CELL / 2, text="\U0001f6a9",
-                                  font=tkfont.Font(family="Segoe UI Emoji", size=14))
+                                  font=tkfont.Font(family="Consolas Emoji", size=14))
 
