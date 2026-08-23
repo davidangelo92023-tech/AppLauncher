@@ -639,6 +639,10 @@ class AppLauncher(tk.Tk):
         self.focus_force()
 
         self.font_title = tkfont.Font(family="Consolas", size=20, weight="bold")
+        # Smaller than font_title (used for the empty-state "No matches" card)
+        # specifically so the longer "AppLauncher 2.0" header text doesn't
+        # run into the search bar / toolbar pills to its right.
+        self.font_title_header = tkfont.Font(family="Consolas", size=16, weight="bold")
         self.font_sub = tkfont.Font(family="Consolas", size=9)
         self.font_card = tkfont.Font(family="Consolas", size=9)
         self.font_footer = tkfont.Font(family="Consolas", size=9)
@@ -1558,7 +1562,7 @@ class AppLauncher(tk.Tk):
         self.cv.create_image(x, 17, image=self._logo_photo(logo_size), anchor="n", tags="hdr")
         title_x = x + logo_size + 10
         self.cv.create_text(title_x, 34, anchor="w", text="AppLauncher 2.0",
-                            font=self.font_title, fill=self._text_color(), tags="hdr")
+                            font=self.font_title_header, fill=self._text_color(), tags="hdr")
         self.cv.create_text(title_x, 64, anchor="w", text=APPS_DIR,
                             font=self.font_sub, fill=self._muted_color(), tags="hdr")
         self.cv.create_image(title_x, 78, image=self._accent_bar_photo(118), anchor="nw",
