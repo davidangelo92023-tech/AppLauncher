@@ -618,7 +618,7 @@ def make_background(w, h, bg_top, bg_bottom, glow_rgb):
 class AppLauncher(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("App Launcher")
+        self.title("AppLauncher 2.0")
         try:
             icon_path = os.path.join(BASE_DIR, "icon.ico")
             if os.path.exists(icon_path):
@@ -1470,7 +1470,7 @@ class AppLauncher(tk.Tk):
         return photo
 
     def _logo_photo(self, size=34):
-        """Small glassy app-grid mark shown next to the "App Launcher" title,
+        """Small glassy app-grid mark shown next to the "AppLauncher 2.0" title,
         echoing the desktop icon's tile motif. Cached per (size, accent)."""
         accent = self._accent()
         key = (size, accent)
@@ -1557,7 +1557,7 @@ class AppLauncher(tk.Tk):
         logo_size = 34
         self.cv.create_image(x, 17, image=self._logo_photo(logo_size), anchor="n", tags="hdr")
         title_x = x + logo_size + 10
-        self.cv.create_text(title_x, 34, anchor="w", text="App Launcher",
+        self.cv.create_text(title_x, 34, anchor="w", text="AppLauncher 2.0",
                             font=self.font_title, fill=self._text_color(), tags="hdr")
         self.cv.create_text(title_x, 64, anchor="w", text=APPS_DIR,
                             font=self.font_sub, fill=self._muted_color(), tags="hdr")
@@ -2496,7 +2496,7 @@ class AppLauncher(tk.Tk):
 
     # ---------- start with Windows ----------
     def _startup_command(self):
-        """Command line that should open App Launcher, mirroring the same
+        """Command line that should open AppLauncher 2.0, mirroring the same
         exe-if-present-else-python logic App Launcher.vbs uses."""
         if getattr(sys, "frozen", False):
             return f'"{os.path.abspath(sys.executable)}"'
@@ -2606,7 +2606,7 @@ class AppLauncher(tk.Tk):
         if not messagebox.askyesno(
             "Update available",
             f"Download and install v{version} now?\n\n"
-            "App Launcher will restart automatically once it's done. "
+            "AppLauncher 2.0 will restart automatically once it's done. "
             "Your apps, contacts, and settings are not touched.",
         ):
             return
@@ -2666,7 +2666,7 @@ class AppLauncher(tk.Tk):
         self._update_version = None
         if not messagebox.askyesno(
             "Update installed",
-            f"v{version} is installed. Restart App Launcher now to start using it?",
+            f"v{version} is installed. Restart AppLauncher 2.0 now to start using it?",
         ):
             self._draw_footer()
             return
@@ -2890,7 +2890,7 @@ class AppLauncher(tk.Tk):
             pystray.MenuItem("Quit", lambda icon, item: self._tray_set("quit")),
         )
         try:
-            icon = pystray.Icon("applauncher", make_tray_image(), "App Launcher", menu)
+            icon = pystray.Icon("applauncher", make_tray_image(), "AppLauncher 2.0", menu)
             self._tray = icon
             threading.Thread(target=icon.run, daemon=True).start()
             self._tray_running = True
@@ -3899,7 +3899,7 @@ class AssistantWindow(tk.Toplevel):
         if re.fullmatch(r"(hi|hello|hey|yo|hiya|sup|howdy)[\s!.]*", low):
             return "Hello! Try 'help' to see what I can do.", None
         if any(w in low for w in ("who are you", "what are you")):
-            return ("I'm your launcher assistant. I live inside your App Launcher: I can "
+            return ("I'm your launcher assistant. I live inside your AppLauncher 2.0: I can "
                     "open your apps, list what's installed, search the web, do math, check "
                     "the weather and read your PC's info."), None
         if low in ("help", "commands", "help me") or "what can you do" in low:
@@ -4259,7 +4259,7 @@ def _require_signin(root):
         done["ok"] = True
 
     login = AppContacts.LoginWindow(root, on_ready=on_ready)
-    login.title("Sign in to use App Launcher")
+    login.title("Sign in to use AppLauncher 2.0")
 
     def on_close():
         done["ok"] = False
@@ -4288,7 +4288,7 @@ def main():
         if not AppNet.load_session():
             gate = tk.Tk()
             gate.withdraw()
-            gate.title("App Launcher")
+            gate.title("AppLauncher 2.0")
             ok = _require_signin(gate)
             gate.destroy()
             if not ok:
@@ -4298,7 +4298,7 @@ def main():
     except Exception as e:
         try:
             import tkinter.messagebox as mb
-            mb.showerror("App Launcher error", str(e))
+            mb.showerror("AppLauncher 2.0 error", str(e))
         except Exception:
             pass
 
